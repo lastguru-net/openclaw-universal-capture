@@ -1,0 +1,58 @@
+{
+  "name": "openclaw-universal-capture",
+  "version": "0.1.0",
+  "description": "OpenClaw context engine for append-only markdown conversation capture without interfering with native Codex thread resumes.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/src/",
+    "index.ts",
+    "src/",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check-types": "tsc --noEmit -p tsconfig.json",
+    "prepare": "npm run build",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "release:check": "npm run check-types && npm test && npm pack --dry-run"
+  },
+  "keywords": [
+    "openclaw",
+    "conversation",
+    "capture",
+    "context-engine"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lastguru-net/openclaw-universal-capture"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.5.31-beta.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "openclaw": "2026.5.31-beta.4",
+    "typescript": "^5.9.3"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "runtimeExtensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.5.31-beta.4"
+    },
+    "install": {
+      "minHostVersion": ">=2026.5.31-beta.4"
+    }
+  }
+}

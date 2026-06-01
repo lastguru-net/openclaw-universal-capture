@@ -1,0 +1,41 @@
+{
+  "id": "openclaw-universal-capture",
+  "kind": "context-engine",
+  "name": "OpenClaw Universal Capture",
+  "description": "Append-only markdown conversation capture context engine compatible with native Codex thread resumes.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "folder": {
+        "type": "string",
+        "description": "Workspace-relative folder for daily conversation markdown files."
+      },
+      "timezone": {
+        "type": "string",
+        "description": "IANA timezone used for daily rollover and entry times. Defaults to UTC."
+      },
+      "skipNoReply": {
+        "type": "boolean",
+        "description": "Skip assistant messages whose final text is exactly NO_REPLY. Defaults to false."
+      }
+    },
+    "required": []
+  },
+  "uiHints": {
+    "folder": {
+      "label": "Capture Folder",
+      "placeholder": "openclaw-beru/conversations",
+      "help": "Workspace-relative folder for daily Conversation markdown files."
+    },
+    "timezone": {
+      "label": "Rollover Timezone",
+      "placeholder": "UTC",
+      "help": "IANA timezone used for daily file rollover and entry timestamps."
+    },
+    "skipNoReply": {
+      "label": "Skip NO_REPLY",
+      "help": "When enabled, assistant messages whose text is exactly NO_REPLY are not captured."
+    }
+  }
+}
