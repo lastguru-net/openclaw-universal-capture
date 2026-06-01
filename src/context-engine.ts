@@ -76,6 +76,7 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
       messages: params.messages,
       prePromptMessageCount: params.prePromptMessageCount,
       timezone: this.params.config.timezone,
+      rolloverTime: this.params.config.rolloverTime,
       skipNoReply: this.params.config.skipNoReply,
     })
     if (entries.length === 0) return

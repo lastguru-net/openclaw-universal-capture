@@ -1,11 +1,19 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
+function dateFromParts(parts) {
+    const value = (type) => parts.find((part) => part.type === type)?.value ?? "";
+    return `${value("year")}-${value("month")}-${value("day")}`;
+}
 function asRecord(value) {
     return value && typeof value === "object" && !Array.isArray(value)
         ? value
         : undefined;
 }
-function formatInTimezone(timestamp, timezone) {
+function rolloverMinutes(rolloverTime) {
+    const [hour = "0", minute = "0"] = rolloverTime.split(":");
+    return Number(hour) * 60 + Number(minute);
+}
+function formatInTimezone(timestamp, timezone, rolloverTime) {
     const date = typeof timestamp === "number" || typeof timestamp === "string"
         ? new Date(timestamp)
         : new Date();
@@ -20,9 +28,19 @@ function formatInTimezone(timestamp, timezone) {
         hourCycle: "h23",
     }).formatToParts(safeDate);
     const value = (type) => parts.find((part) => part.type === type)?.value ?? "";
+    const time = `${value("hour")}:${value("minute")}`;
+    const localMinutes = Number(value("hour")) * 60 + Number(value("minute"));
+    const captureDate = localMinutes < rolloverMinutes(rolloverTime)
+        ? dateFromParts(new Intl.DateTimeFormat("en-CA", {
+            timeZone: timezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+        }).formatToParts(new Date(safeDate.getTime() - 24 * 60 * 60 * 1000)))
+        : dateFromParts(parts);
     return {
-        date: `${value("year")}-${value("month")}-${value("day")}`,
-        time: `${value("hour")}:${value("minute")}`,
+        date: captureDate,
+        time,
     };
 }
 function extractTextPart(value) {
@@ -86,7 +104,7 @@ export function selectCaptureEntries(params) {
         const userText = findCorrespondingUserText(params.messages, index);
         if (!userText)
             continue;
-        const dateParts = formatInTimezone(messageTimestamp(message), params.timezone);
+        const dateParts = formatInTimezone(messageTimestamp(message), params.timezone, params.rolloverTime);
         entries.push({
             ...dateParts,
             userText,

@@ -23,7 +23,8 @@ Version `0.1.0` is intentionally narrow:
         "enabled": true,
         "config": {
           "folder": "conversations",
-          "timezone": "UTC",
+          "timezone": "Europe/Riga",
+          "rolloverTime": "04:00",
           "skipNoReply": false
         }
       }
@@ -38,7 +39,11 @@ Version `0.1.0` is intentionally narrow:
 `folder` must be relative to the OpenClaw workspace. The default is
 `conversations`.
 
-`timezone` controls daily rollover and entry timestamps. The default is `UTC`.
+`timezone` controls daily rollover and entry timestamps. The default is the
+host timezone.
+
+`rolloverTime` controls when capture switches to the next conversation day in
+the configured timezone. The default is `04:00`.
 
 `skipNoReply` controls whether literal `NO_REPLY` assistant messages are
 captured. The default is `false`.

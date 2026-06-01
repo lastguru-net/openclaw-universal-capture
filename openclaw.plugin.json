@@ -13,7 +13,11 @@
       },
       "timezone": {
         "type": "string",
-        "description": "IANA timezone used for daily rollover and entry times. Defaults to UTC."
+        "description": "IANA timezone used for daily rollover and entry times. Defaults to the host timezone."
+      },
+      "rolloverTime": {
+        "type": "string",
+        "description": "Local HH:MM time when capture switches to the next conversation day. Defaults to 04:00."
       },
       "skipNoReply": {
         "type": "boolean",
@@ -30,8 +34,12 @@
     },
     "timezone": {
       "label": "Rollover Timezone",
-      "placeholder": "UTC",
-      "help": "IANA timezone used for daily file rollover and entry timestamps."
+      "help": "IANA timezone used for daily file rollover and entry timestamps. Defaults to the host timezone."
+    },
+    "rolloverTime": {
+      "label": "Rollover Time",
+      "placeholder": "04:00",
+      "help": "Local HH:MM time when capture switches to the next conversation day."
     },
     "skipNoReply": {
       "label": "Skip NO_REPLY",

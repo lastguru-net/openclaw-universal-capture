@@ -74,17 +74,20 @@ function toolOnlyAssistant(timestamp = Date.UTC(2026, 5, 1, 10, 4)): AgentMessag
   } as unknown as AgentMessage
 }
 
-test("parseConfig defaults to workspace-relative conversation folder and UTC", () => {
+test("parseConfig defaults to host timezone and 04:00 rollover", () => {
   assert.deepEqual(parseConfig({}), {
     folder: "conversations",
-    timezone: "UTC",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    rolloverTime: "04:00",
     skipNoReply: false,
   })
 })
 
-test("parseConfig rejects absolute and escaping folders", () => {
+test("parseConfig rejects invalid folder and rollover config", () => {
   assert.throws(() => parseConfig({ folder: "/tmp/captures" }), /workspace-relative/)
   assert.throws(() => parseConfig({ folder: "../captures" }), /inside the workspace/)
+  assert.throws(() => parseConfig({ rolloverTime: "4:00" }), /HH:MM/)
+  assert.throws(() => parseConfig({ rolloverTime: "24:00" }), /HH:MM/)
 })
 
 test("extractMessageText ignores tool calls and keeps text blocks", () => {
@@ -113,6 +116,7 @@ test("selectCaptureEntries captures assistant text with nearest user", () => {
     messages,
     prePromptMessageCount: 2,
     timezone: "UTC",
+    rolloverTime: "04:00",
     skipNoReply: false,
   })
 
@@ -126,11 +130,34 @@ test("selectCaptureEntries captures assistant text with nearest user", () => {
   ])
 })
 
+test("selectCaptureEntries uses rollover time for conversation date", () => {
+  const entries = selectCaptureEntries({
+    messages: [
+      user("late question", Date.UTC(2026, 5, 1, 2, 30)),
+      assistant("late reply", Date.UTC(2026, 5, 1, 3, 30)),
+    ],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+  })
+
+  assert.deepEqual(entries, [
+    {
+      date: "2026-05-31",
+      time: "03:30",
+      userText: "late question",
+      assistantText: "late reply",
+    },
+  ])
+})
+
 test("selectCaptureEntries keeps NO_REPLY by default", () => {
   const entries = selectCaptureEntries({
     messages: [user("question"), assistant("NO_REPLY")],
     prePromptMessageCount: 0,
     timezone: "UTC",
+    rolloverTime: "04:00",
     skipNoReply: false,
   })
   assert.equal(entries.length, 1)
@@ -142,6 +169,7 @@ test("selectCaptureEntries can skip NO_REPLY", () => {
     messages: [user("question"), assistant("NO_REPLY")],
     prePromptMessageCount: 0,
     timezone: "UTC",
+    rolloverTime: "04:00",
     skipNoReply: true,
   })
   assert.equal(entries.length, 0)
@@ -155,6 +183,7 @@ test("appendCaptureEntries creates Conversation file frontmatter", async () => {
       config: {
         folder: "conversations",
         timezone: "UTC",
+        rolloverTime: "04:00",
         skipNoReply: false,
       },
       entries: [

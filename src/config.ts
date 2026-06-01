@@ -3,13 +3,14 @@ import { isAbsolute, normalize } from "node:path"
 export type UniversalCaptureConfig = {
   folder: string
   timezone: string
+  rolloverTime: string
   skipNoReply: boolean
 }
 
 const DEFAULT_FOLDER = "conversations"
-const DEFAULT_TIMEZONE = "UTC"
+const DEFAULT_ROLLOVER_TIME = "04:00"
 
-const ALLOWED_KEYS = new Set(["folder", "timezone", "skipNoReply"])
+const ALLOWED_KEYS = new Set(["folder", "timezone", "rolloverTime", "skipNoReply"])
 
 function assertAllowedKeys(config: Record<string, unknown>): void {
   const unknown = Object.keys(config).filter((key) => !ALLOWED_KEYS.has(key))
@@ -26,6 +27,24 @@ function assertValidTimezone(timezone: string): void {
   } catch {
     throw new Error(`Invalid timezone for openclaw-universal-capture: ${timezone}`)
   }
+}
+
+function defaultTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+}
+
+function normalizeRolloverTime(value: unknown): string {
+  const rolloverTime =
+    typeof value === "string" && value.trim().length > 0
+      ? value.trim()
+      : DEFAULT_ROLLOVER_TIME
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(rolloverTime)
+  if (!match) {
+    throw new Error(
+      "openclaw-universal-capture rolloverTime must use HH:MM in 24-hour time",
+    )
+  }
+  return rolloverTime
 }
 
 function normalizeFolder(value: unknown): string {
@@ -55,12 +74,13 @@ export function parseConfig(raw: unknown): UniversalCaptureConfig {
   const timezone =
     typeof config.timezone === "string" && config.timezone.trim().length > 0
       ? config.timezone.trim()
-      : DEFAULT_TIMEZONE
+      : defaultTimezone()
   assertValidTimezone(timezone)
 
   return {
     folder: normalizeFolder(config.folder),
     timezone,
+    rolloverTime: normalizeRolloverTime(config.rolloverTime),
     skipNoReply:
       typeof config.skipNoReply === "boolean" ? config.skipNoReply : false,
   }

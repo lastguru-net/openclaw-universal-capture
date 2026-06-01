@@ -18,6 +18,7 @@ export declare function selectCaptureEntries(params: {
     messages: AgentMessage[];
     prePromptMessageCount: number;
     timezone: string;
+    rolloverTime: string;
     skipNoReply: boolean;
 }): ConversationCaptureEntry[];
 export declare function resolveCaptureFileTarget(params: {
