@@ -76,7 +76,7 @@ function toolOnlyAssistant(timestamp = Date.UTC(2026, 5, 1, 10, 4)): AgentMessag
 
 test("parseConfig defaults to workspace-relative conversation folder and UTC", () => {
   assert.deepEqual(parseConfig({}), {
-    folder: "openclaw-beru/conversations",
+    folder: "conversations",
     timezone: "UTC",
     skipNoReply: false,
   })
@@ -153,7 +153,7 @@ test("appendCaptureEntries creates Conversation file frontmatter", async () => {
     await appendCaptureEntries({
       workspaceDir,
       config: {
-        folder: "openclaw-beru/conversations",
+        folder: "conversations",
         timezone: "UTC",
         skipNoReply: false,
       },
@@ -169,14 +169,14 @@ test("appendCaptureEntries creates Conversation file frontmatter", async () => {
 
     const target = resolveCaptureFileTarget({
       workspaceDir,
-      folder: "openclaw-beru/conversations",
+      folder: "conversations",
       date: "2026-06-01",
     })
     const content = await readFile(target.filePath, "utf8")
     assert.match(content, /type: Conversation/)
     assert.match(
       content,
-      /permalink: openclaw-beru\/conversations\/conversations-2026-06-01/,
+      /permalink: conversations\/conversations-2026-06-01/,
     )
     assert.match(content, /# Conversations 2026-06-01/)
     assert.match(content, /\*\*User:\*\*\nnew request/)

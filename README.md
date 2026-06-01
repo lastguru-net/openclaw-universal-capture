@@ -22,7 +22,7 @@ Version `0.1.0` is intentionally narrow:
       "openclaw-universal-capture": {
         "enabled": true,
         "config": {
-          "folder": "openclaw-beru/conversations",
+          "folder": "conversations",
           "timezone": "UTC",
           "skipNoReply": false
         }
@@ -36,7 +36,7 @@ Version `0.1.0` is intentionally narrow:
 ```
 
 `folder` must be relative to the OpenClaw workspace. The default is
-`openclaw-beru/conversations`.
+`conversations`.
 
 `timezone` controls daily rollover and entry timestamps. The default is `UTC`.
 
@@ -57,7 +57,7 @@ The file starts as:
 ---
 title: conversations-2026-06-01
 type: Conversation
-permalink: openclaw-beru/conversations/conversations-2026-06-01
+permalink: conversations/conversations-2026-06-01
 date: 2026-06-01
 ---
 

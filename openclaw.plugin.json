@@ -25,7 +25,7 @@
   "uiHints": {
     "folder": {
       "label": "Capture Folder",
-      "placeholder": "openclaw-beru/conversations",
+      "placeholder": "conversations",
       "help": "Workspace-relative folder for daily Conversation markdown files."
     },
     "timezone": {

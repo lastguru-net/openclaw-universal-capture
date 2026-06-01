@@ -1,5 +1,5 @@
 import { isAbsolute, normalize } from "node:path";
-const DEFAULT_FOLDER = "openclaw-beru/conversations";
+const DEFAULT_FOLDER = "conversations";
 const DEFAULT_TIMEZONE = "UTC";
 const ALLOWED_KEYS = new Set(["folder", "timezone", "skipNoReply"]);
 function assertAllowedKeys(config) {

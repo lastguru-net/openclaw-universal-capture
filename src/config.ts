@@ -6,7 +6,7 @@ export type UniversalCaptureConfig = {
   skipNoReply: boolean
 }
 
-const DEFAULT_FOLDER = "openclaw-beru/conversations"
+const DEFAULT_FOLDER = "conversations"
 const DEFAULT_TIMEZONE = "UTC"
 
 const ALLOWED_KEYS = new Set(["folder", "timezone", "skipNoReply"])
