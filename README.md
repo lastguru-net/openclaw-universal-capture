@@ -8,7 +8,7 @@ Version `0.1.0` is intentionally narrow:
 - captures assistant text messages paired with the nearest preceding user message
 - ignores tool calls, tool results, and non-message transcript records
 - writes one combined `Conversation` note per day
-- creates the daily file lazily with Basic Memory-compatible frontmatter
+- creates the daily file lazily with `Conversation` frontmatter
 - returns unchanged context from `assemble()`
 - returns stable `thread_bootstrap` context projection metadata so native Codex
   threads can resume without lossy per-turn OpenClaw history projection
@@ -29,7 +29,6 @@ Version `0.1.0` is intentionally narrow:
       }
     },
     "slots": {
-      "memory": "openclaw-basic-memory",
       "contextEngine": "openclaw-universal-capture"
     }
   }

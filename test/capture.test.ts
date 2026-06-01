@@ -147,7 +147,7 @@ test("selectCaptureEntries can skip NO_REPLY", () => {
   assert.equal(entries.length, 0)
 })
 
-test("appendCaptureEntries creates Basic Memory compatible Conversation file", async () => {
+test("appendCaptureEntries creates Conversation file frontmatter", async () => {
   const workspaceDir = await mkdtemp(join(tmpdir(), "ouc-"))
   try {
     await appendCaptureEntries({
