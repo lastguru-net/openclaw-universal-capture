@@ -22,6 +22,17 @@ function user(text: string, timestamp = Date.UTC(2026, 5, 1, 10, 0)): AgentMessa
   } as AgentMessage
 }
 
+function userWithMetadata(
+  text: string,
+  metadata: Record<string, unknown>,
+  timestamp = Date.UTC(2026, 5, 1, 10, 0),
+): AgentMessage {
+  return {
+    ...user(text, timestamp),
+    ...metadata,
+  } as AgentMessage
+}
+
 function assistant(text: string, timestamp = Date.UTC(2026, 5, 1, 10, 5)): AgentMessage {
   return {
     role: "assistant",
@@ -80,6 +91,7 @@ test("parseConfig defaults to host timezone and 04:00 rollover", () => {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     rolloverTime: "04:00",
     skipNoReply: false,
+    includeMessageMetadata: false,
   })
 })
 
@@ -118,6 +130,7 @@ test("selectCaptureEntries captures assistant text with nearest user", () => {
     timezone: "UTC",
     rolloverTime: "04:00",
     skipNoReply: false,
+    includeMessageMetadata: false,
   })
 
   assert.deepEqual(entries, [
@@ -140,6 +153,7 @@ test("selectCaptureEntries uses rollover time for conversation date", () => {
     timezone: "UTC",
     rolloverTime: "04:00",
     skipNoReply: false,
+    includeMessageMetadata: false,
   })
 
   assert.deepEqual(entries, [
@@ -159,6 +173,7 @@ test("selectCaptureEntries keeps NO_REPLY by default", () => {
     timezone: "UTC",
     rolloverTime: "04:00",
     skipNoReply: false,
+    includeMessageMetadata: false,
   })
   assert.equal(entries.length, 1)
   assert.equal(entries[0]?.assistantText, "NO_REPLY")
@@ -171,8 +186,49 @@ test("selectCaptureEntries can skip NO_REPLY", () => {
     timezone: "UTC",
     rolloverTime: "04:00",
     skipNoReply: true,
+    includeMessageMetadata: false,
   })
   assert.equal(entries.length, 0)
+})
+
+test("selectCaptureEntries can include metadata from 5-part session keys", () => {
+  const entries = selectCaptureEntries({
+    messages: [
+      userWithMetadata("question", { senderUsername: "lastguru" }),
+      assistant("answer"),
+    ],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+    includeMessageMetadata: true,
+    sessionKey: "agent:home:discord:channel:731682904516293847",
+  })
+
+  assert.deepEqual(entries[0]?.metadata, {
+    agent: "home",
+    surface: "discord",
+    channel: "channel:731682904516293847",
+    senderUsername: "lastguru",
+  })
+})
+
+test("selectCaptureEntries can include metadata from 4-part session keys", () => {
+  const entries = selectCaptureEntries({
+    messages: [user("question"), assistant("answer")],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+    includeMessageMetadata: true,
+    sessionKey: "agent:main:main:heartbeat",
+  })
+
+  assert.deepEqual(entries[0]?.metadata, {
+    agent: "main",
+    surface: "main",
+    channel: "heartbeat",
+  })
 })
 
 test("appendCaptureEntries creates Conversation file frontmatter", async () => {
@@ -185,11 +241,18 @@ test("appendCaptureEntries creates Conversation file frontmatter", async () => {
         timezone: "UTC",
         rolloverTime: "04:00",
         skipNoReply: false,
+        includeMessageMetadata: true,
       },
       entries: [
         {
           date: "2026-06-01",
           time: "10:05",
+          metadata: {
+            agent: "home",
+            surface: "discord",
+            channel: "channel:731682904516293847",
+            senderUsername: "lastguru",
+          },
           userText: "new request",
           assistantText: "final reply",
         },
@@ -208,6 +271,7 @@ test("appendCaptureEntries creates Conversation file frontmatter", async () => {
       /permalink: conversations\/conversations-2026-06-01/,
     )
     assert.match(content, /# Conversations 2026-06-01/)
+    assert.match(content, /### 10:05\nAgent: home\nSurface: discord\nChannel: channel:731682904516293847\nSender: lastguru/)
     assert.match(content, /\*\*User:\*\*\nnew request/)
     assert.match(content, /\*\*Assistant:\*\*\nfinal reply/)
   } finally {

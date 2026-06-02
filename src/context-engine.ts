@@ -61,6 +61,7 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
   }
 
   async afterTurn(params: {
+    sessionKey?: string
     messages: AgentMessage[]
     prePromptMessageCount: number
   }): Promise<void> {
@@ -78,6 +79,8 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
       timezone: this.params.config.timezone,
       rolloverTime: this.params.config.rolloverTime,
       skipNoReply: this.params.config.skipNoReply,
+      includeMessageMetadata: this.params.config.includeMessageMetadata,
+      sessionKey: params.sessionKey,
     })
     if (entries.length === 0) return
 

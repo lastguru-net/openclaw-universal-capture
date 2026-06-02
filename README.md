@@ -25,7 +25,8 @@ Version `0.2.0` is intentionally narrow:
           "folder": "conversations",
           "timezone": "Europe/Riga",
           "rolloverTime": "04:00",
-          "skipNoReply": false
+          "skipNoReply": false,
+          "includeMessageMetadata": false
         }
       }
     },
@@ -50,6 +51,11 @@ handled. By default it is `false`, so those marker replies are written to the
 conversation file like any other assistant text. Set it to `true` when you want
 to omit turns where `NO_REPLY` means the visible response was delivered through
 some other channel or there was intentionally no chat-visible answer.
+
+`includeMessageMetadata` controls whether entry metadata is written directly
+below each timestamp heading. The default is `false`. When enabled, the plugin
+adds agent, surface, and channel values inferred from `sessionKey`, and adds a
+sender line only when the captured user message exposes `senderUsername`.
 
 ## Output
 
@@ -76,6 +82,10 @@ Entries are appended:
 
 ```markdown
 ### 10:05
+Agent: home
+Surface: discord
+Channel: channel:731682904516293847
+Sender: lastguru
 
 **User:**
 ...

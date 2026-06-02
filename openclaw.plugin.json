@@ -22,6 +22,10 @@
       "skipNoReply": {
         "type": "boolean",
         "description": "When true, omit turns whose assistant text is exactly NO_REPLY. Defaults to false, so NO_REPLY marker turns are captured."
+      },
+      "includeMessageMetadata": {
+        "type": "boolean",
+        "description": "When true, add inferred agent/surface/channel metadata and senderUsername when present. Defaults to false."
       }
     },
     "required": []
@@ -44,6 +48,10 @@
     "skipNoReply": {
       "label": "Skip NO_REPLY",
       "help": "When enabled, NO_REPLY marker turns are omitted from the markdown log instead of being captured like normal assistant text."
+    },
+    "includeMessageMetadata": {
+      "label": "Include Metadata",
+      "help": "When enabled, each entry includes agent, surface, channel, and sender username when available."
     }
   }
 }

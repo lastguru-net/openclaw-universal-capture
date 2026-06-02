@@ -5,12 +5,19 @@ export type UniversalCaptureConfig = {
   timezone: string
   rolloverTime: string
   skipNoReply: boolean
+  includeMessageMetadata: boolean
 }
 
 const DEFAULT_FOLDER = "conversations"
 const DEFAULT_ROLLOVER_TIME = "04:00"
 
-const ALLOWED_KEYS = new Set(["folder", "timezone", "rolloverTime", "skipNoReply"])
+const ALLOWED_KEYS = new Set([
+  "folder",
+  "timezone",
+  "rolloverTime",
+  "skipNoReply",
+  "includeMessageMetadata",
+])
 
 function assertAllowedKeys(config: Record<string, unknown>): void {
   const unknown = Object.keys(config).filter((key) => !ALLOWED_KEYS.has(key))
@@ -83,5 +90,9 @@ export function parseConfig(raw: unknown): UniversalCaptureConfig {
     rolloverTime: normalizeRolloverTime(config.rolloverTime),
     skipNoReply:
       typeof config.skipNoReply === "boolean" ? config.skipNoReply : false,
+    includeMessageMetadata:
+      typeof config.includeMessageMetadata === "boolean"
+        ? config.includeMessageMetadata
+        : false,
   }
 }

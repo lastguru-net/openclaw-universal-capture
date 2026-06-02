@@ -8,8 +8,16 @@ import type { UniversalCaptureConfig } from "./config.js"
 export type ConversationCaptureEntry = {
   date: string
   time: string
+  metadata?: ConversationCaptureMetadata
   userText: string
   assistantText: string
+}
+
+export type ConversationCaptureMetadata = {
+  agent?: string
+  surface?: string
+  channel?: string
+  senderUsername?: string
 }
 
 export type CaptureFileTarget = {
@@ -124,13 +132,54 @@ function messageTimestamp(message: unknown): number | string | undefined {
     : undefined
 }
 
-function findCorrespondingUserText(messages: AgentMessage[], assistantIndex: number): string {
+function messageSenderUsername(message: unknown): string | undefined {
+  const record = asRecord(message)
+  const senderUsername = record?.senderUsername
+  return typeof senderUsername === "string" && senderUsername.trim().length > 0
+    ? senderUsername.trim()
+    : undefined
+}
+
+function parseSessionKeyMetadata(
+  sessionKey: string | undefined,
+): Pick<ConversationCaptureMetadata, "agent" | "surface" | "channel"> {
+  if (!sessionKey) return {}
+  const parts = sessionKey.split(":")
+  if (parts[0] !== "agent" || parts.length < 3) return {}
+
+  const metadata: Pick<ConversationCaptureMetadata, "agent" | "surface" | "channel"> = {}
+  if (parts[1]) metadata.agent = parts[1]
+  if (parts[2]) metadata.surface = parts[2]
+  if (parts.length > 3) {
+    const channel = parts.slice(3).join(":")
+    if (channel) metadata.channel = channel
+  }
+  return metadata
+}
+
+function buildCaptureMetadata(params: {
+  sessionKey?: string
+  userMessage: AgentMessage
+}): ConversationCaptureMetadata | undefined {
+  const metadata: ConversationCaptureMetadata = {
+    ...parseSessionKeyMetadata(params.sessionKey),
+  }
+  const senderUsername = messageSenderUsername(params.userMessage)
+  if (senderUsername) metadata.senderUsername = senderUsername
+
+  return Object.keys(metadata).length > 0 ? metadata : undefined
+}
+
+function findCorrespondingUser(messages: AgentMessage[], assistantIndex: number): {
+  message: AgentMessage
+  text: string
+} | undefined {
   for (let index = assistantIndex - 1; index >= 0; index--) {
     if (messageRole(messages[index]) !== "user") continue
     const text = extractMessageText(messages[index])
-    if (text) return text
+    if (text) return { message: messages[index], text }
   }
-  return ""
+  return undefined
 }
 
 export function selectCaptureEntries(params: {
@@ -139,6 +188,8 @@ export function selectCaptureEntries(params: {
   timezone: string
   rolloverTime: string
   skipNoReply: boolean
+  includeMessageMetadata: boolean
+  sessionKey?: string
 }): ConversationCaptureEntry[] {
   const entries: ConversationCaptureEntry[] = []
   const start = Math.max(0, Math.min(params.prePromptMessageCount, params.messages.length))
@@ -151,8 +202,8 @@ export function selectCaptureEntries(params: {
     if (!assistantText) continue
     if (params.skipNoReply && assistantText.trim() === "NO_REPLY") continue
 
-    const userText = findCorrespondingUserText(params.messages, index)
-    if (!userText) continue
+    const user = findCorrespondingUser(params.messages, index)
+    if (!user) continue
 
     const dateParts = formatInTimezone(
       messageTimestamp(message),
@@ -161,7 +212,15 @@ export function selectCaptureEntries(params: {
     )
     entries.push({
       ...dateParts,
-      userText,
+      ...(params.includeMessageMetadata
+        ? {
+            metadata: buildCaptureMetadata({
+              sessionKey: params.sessionKey,
+              userMessage: user.message,
+            }),
+          }
+        : {}),
+      userText: user.text,
       assistantText,
     })
   }
@@ -204,8 +263,10 @@ export function renderInitialFile(target: CaptureFileTarget): string {
 }
 
 export function renderCaptureEntry(entry: ConversationCaptureEntry): string {
+  const metadataLines = renderMetadataLines(entry.metadata)
   return [
     `### ${entry.time}`,
+    ...metadataLines,
     "",
     "**User:**",
     entry.userText.trimEnd(),
@@ -216,6 +277,19 @@ export function renderCaptureEntry(entry: ConversationCaptureEntry): string {
     "---",
     "",
   ].join("\n")
+}
+
+function renderMetadataLines(
+  metadata: ConversationCaptureMetadata | undefined,
+): string[] {
+  if (!metadata) return []
+
+  const lines: string[] = []
+  if (metadata.agent) lines.push(`Agent: ${metadata.agent}`)
+  if (metadata.surface) lines.push(`Surface: ${metadata.surface}`)
+  if (metadata.channel) lines.push(`Channel: ${metadata.channel}`)
+  if (metadata.senderUsername) lines.push(`Sender: ${metadata.senderUsername}`)
+  return lines
 }
 
 async function ensureCaptureFile(target: CaptureFileTarget): Promise<void> {
