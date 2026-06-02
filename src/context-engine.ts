@@ -54,7 +54,9 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
       estimatedTokens: 0,
       contextProjection: {
         mode: "thread_bootstrap",
-        epoch: "v0.3",
+        // Keep this stable across capture-only releases. Change it only when
+        // assemble() projects semantically different bootstrap context.
+        epoch: "v0",
         fingerprint: "append-only-md-capture",
       },
     }
