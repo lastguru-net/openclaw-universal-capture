@@ -26,6 +26,10 @@
       "includeMessageMetadata": {
         "type": "boolean",
         "description": "When true, add inferred agent/surface/channel metadata and senderUsername when present. Defaults to false."
+      },
+      "stripUntrustedMetadata": {
+        "type": "boolean",
+        "description": "When true, strip leading OpenClaw untrusted metadata blocks from captured user text. Defaults to true."
       }
     },
     "required": []
@@ -52,6 +56,10 @@
     "includeMessageMetadata": {
       "label": "Include Metadata",
       "help": "When enabled, each entry includes agent, surface, channel, and sender username when available."
+    },
+    "stripUntrustedMetadata": {
+      "label": "Strip Untrusted Metadata",
+      "help": "When enabled, leading Conversation info and following Sender untrusted metadata blocks are omitted from captured user text."
     }
   }
 }

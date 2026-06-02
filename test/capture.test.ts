@@ -11,6 +11,7 @@ import {
   extractMessageText,
   resolveCaptureFileTarget,
   selectCaptureEntries,
+  stripLeadingUntrustedMetadata,
 } from "../src/capture.js"
 import { parseConfig } from "../src/config.js"
 
@@ -92,6 +93,7 @@ test("parseConfig defaults to host timezone and 04:00 rollover", () => {
     rolloverTime: "04:00",
     skipNoReply: false,
     includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
   })
 })
 
@@ -131,6 +133,7 @@ test("selectCaptureEntries captures assistant text with nearest user", () => {
     rolloverTime: "04:00",
     skipNoReply: false,
     includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
   })
 
   assert.deepEqual(entries, [
@@ -154,6 +157,7 @@ test("selectCaptureEntries uses rollover time for conversation date", () => {
     rolloverTime: "04:00",
     skipNoReply: false,
     includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
   })
 
   assert.deepEqual(entries, [
@@ -174,6 +178,7 @@ test("selectCaptureEntries keeps NO_REPLY by default", () => {
     rolloverTime: "04:00",
     skipNoReply: false,
     includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
   })
   assert.equal(entries.length, 1)
   assert.equal(entries[0]?.assistantText, "NO_REPLY")
@@ -187,6 +192,7 @@ test("selectCaptureEntries can skip NO_REPLY", () => {
     rolloverTime: "04:00",
     skipNoReply: true,
     includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
   })
   assert.equal(entries.length, 0)
 })
@@ -202,6 +208,7 @@ test("selectCaptureEntries can include metadata from 5-part session keys", () =>
     rolloverTime: "04:00",
     skipNoReply: false,
     includeMessageMetadata: true,
+    stripUntrustedMetadata: true,
     sessionKey: "agent:home:discord:channel:731682904516293847",
   })
 
@@ -221,6 +228,7 @@ test("selectCaptureEntries can include metadata from 4-part session keys", () =>
     rolloverTime: "04:00",
     skipNoReply: false,
     includeMessageMetadata: true,
+    stripUntrustedMetadata: true,
     sessionKey: "agent:main:main:heartbeat",
   })
 
@@ -229,6 +237,132 @@ test("selectCaptureEntries can include metadata from 4-part session keys", () =>
     surface: "main",
     channel: "heartbeat",
   })
+})
+
+test("stripLeadingUntrustedMetadata removes exact leading conversation metadata", () => {
+  const text = [
+    "Conversation info (untrusted metadata):",
+    "```json",
+    "{",
+    '  "chat_id": "channel:731682904516293847"',
+    "}",
+    "```",
+    "",
+    "[OpenClaw heartbeat poll]",
+  ].join("\n")
+
+  assert.equal(stripLeadingUntrustedMetadata(text), "[OpenClaw heartbeat poll]")
+})
+
+test("stripLeadingUntrustedMetadata removes sender metadata only after conversation metadata", () => {
+  const text = [
+    "Conversation info (untrusted metadata):",
+    "```json",
+    "{",
+    '  "chat_id": "channel:731682904516293847"',
+    "}",
+    "```",
+    "",
+    "Sender (untrusted metadata):",
+    "```json",
+    "{",
+    '  "username": "someone"',
+    "}",
+    "```",
+    "",
+    "reply with just \"6\"",
+  ].join("\n")
+
+  assert.equal(stripLeadingUntrustedMetadata(text), 'reply with just "6"')
+})
+
+test("stripLeadingUntrustedMetadata preserves sender-first and mid-message metadata", () => {
+  const senderFirst = [
+    "Sender (untrusted metadata):",
+    "```json",
+    "{}",
+    "```",
+    "",
+    "Conversation info (untrusted metadata):",
+    "```json",
+    "{}",
+    "```",
+    "",
+    "real message",
+  ].join("\n")
+  const midMessage = [
+    "real prefix",
+    "",
+    "Conversation info (untrusted metadata):",
+    "```json",
+    "{}",
+    "```",
+  ].join("\n")
+
+  assert.equal(stripLeadingUntrustedMetadata(senderFirst), senderFirst)
+  assert.equal(stripLeadingUntrustedMetadata(midMessage), midMessage)
+})
+
+test("stripLeadingUntrustedMetadata preserves malformed leading metadata", () => {
+  const missingFence = [
+    "Conversation info (untrusted metadata):",
+    "```json",
+    "{}",
+    "```not-a-closing-fence",
+    "",
+    "actual message",
+  ].join("\n")
+
+  assert.equal(stripLeadingUntrustedMetadata(missingFence), missingFence)
+})
+
+test("selectCaptureEntries can keep leading untrusted metadata when disabled", () => {
+  const text = [
+    "Conversation info (untrusted metadata):",
+    "```json",
+    "{}",
+    "```",
+    "",
+    "actual message",
+  ].join("\n")
+  const entries = selectCaptureEntries({
+    messages: [user(text), assistant("answer")],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+    includeMessageMetadata: false,
+    stripUntrustedMetadata: false,
+  })
+
+  assert.equal(entries[0]?.userText, text)
+})
+
+test("selectCaptureEntries strips leading untrusted metadata by default config", () => {
+  const config = parseConfig({})
+  const entries = selectCaptureEntries({
+    messages: [
+      user(
+        [
+          "Conversation info (untrusted metadata):",
+          "```json",
+          "{}",
+          "```",
+          "",
+          "actual message",
+        ].join("\n"),
+      ),
+      assistant("answer"),
+    ],
+    prePromptMessageCount: 0,
+    timezone: config.timezone,
+    rolloverTime: config.rolloverTime,
+    skipNoReply: config.skipNoReply,
+    includeMessageMetadata: config.includeMessageMetadata,
+    stripUntrustedMetadata: config.stripUntrustedMetadata,
+  })
+
+  assert.equal(entries[0]?.userText, "actual message")
 })
 
 test("appendCaptureEntries creates Conversation file frontmatter", async () => {
@@ -242,6 +376,7 @@ test("appendCaptureEntries creates Conversation file frontmatter", async () => {
         rolloverTime: "04:00",
         skipNoReply: false,
         includeMessageMetadata: true,
+        stripUntrustedMetadata: true,
       },
       entries: [
         {

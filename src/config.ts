@@ -6,6 +6,7 @@ export type UniversalCaptureConfig = {
   rolloverTime: string
   skipNoReply: boolean
   includeMessageMetadata: boolean
+  stripUntrustedMetadata: boolean
 }
 
 const DEFAULT_FOLDER = "conversations"
@@ -17,6 +18,7 @@ const ALLOWED_KEYS = new Set([
   "rolloverTime",
   "skipNoReply",
   "includeMessageMetadata",
+  "stripUntrustedMetadata",
 ])
 
 function assertAllowedKeys(config: Record<string, unknown>): void {
@@ -94,5 +96,9 @@ export function parseConfig(raw: unknown): UniversalCaptureConfig {
       typeof config.includeMessageMetadata === "boolean"
         ? config.includeMessageMetadata
         : false,
+    stripUntrustedMetadata:
+      typeof config.stripUntrustedMetadata === "boolean"
+        ? config.stripUntrustedMetadata
+        : true,
   }
 }

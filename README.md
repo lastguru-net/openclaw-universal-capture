@@ -3,12 +3,14 @@
 `openclaw-universal-capture` is a small OpenClaw context engine that captures
 completed user/assistant conversation pairs into append-only Markdown files.
 
-Version `0.2.0` is intentionally narrow:
+Version `0.3.0` is intentionally narrow:
 
 - captures assistant text messages paired with the nearest preceding user message
 - ignores tool calls, tool results, and non-message transcript records
 - writes one combined `Conversation` note per day
 - creates the daily file lazily with `Conversation` frontmatter
+- strips leading OpenClaw untrusted metadata blocks from captured user messages
+  by default
 - returns unchanged context from `assemble()`
 - returns stable `thread_bootstrap` context projection metadata so native Codex
   threads can resume without lossy per-turn OpenClaw history projection
@@ -26,7 +28,8 @@ Version `0.2.0` is intentionally narrow:
           "timezone": "Europe/Riga",
           "rolloverTime": "04:00",
           "skipNoReply": false,
-          "includeMessageMetadata": false
+          "includeMessageMetadata": false,
+          "stripUntrustedMetadata": true
         }
       }
     },
@@ -56,6 +59,14 @@ some other channel or there was intentionally no chat-visible answer.
 below each timestamp heading. The default is `false`. When enabled, the plugin
 adds agent, surface, and channel values inferred from `sessionKey`, and adds a
 sender line only when the captured user message exposes `senderUsername`.
+
+`stripUntrustedMetadata` controls whether leading OpenClaw envelope metadata is
+removed from captured user text. The default is `true`. It strips only when the
+user text starts exactly with a `Conversation info (untrusted metadata):` block
+using a complete `json` fenced code block. A following `Sender (untrusted
+metadata):` fenced block is also stripped. Metadata-like text that appears later
+in the message, appears in the opposite order, or does not use that exact
+leading structure is preserved.
 
 ## Output
 

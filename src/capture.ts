@@ -182,6 +182,60 @@ function findCorrespondingUser(messages: AgentMessage[], assistantIndex: number)
   return undefined
 }
 
+const CONVERSATION_INFO_HEADER = "Conversation info (untrusted metadata):\n"
+const SENDER_HEADER = "Sender (untrusted metadata):\n"
+const JSON_FENCE_START = "```json\n"
+
+function findJsonFenceEnd(text: string, start: number): number | undefined {
+  let searchStart = start
+  while (searchStart < text.length) {
+    const fenceStart = text.indexOf("\n```", searchStart)
+    if (fenceStart < 0) return undefined
+
+    const fenceEnd = fenceStart + "\n```".length
+    const next = text[fenceEnd]
+    if (next === undefined || next === "\n") return fenceEnd
+    searchStart = fenceEnd
+  }
+  return undefined
+}
+
+function consumeLeadingMetadataBlock(
+  text: string,
+  start: number,
+  header: string,
+): number | undefined {
+  if (!text.startsWith(header, start)) return undefined
+
+  const fenceStart = start + header.length
+  if (!text.startsWith(JSON_FENCE_START, fenceStart)) return undefined
+
+  const bodyStart = fenceStart + JSON_FENCE_START.length
+  const fenceEnd = findJsonFenceEnd(text, bodyStart)
+  if (fenceEnd === undefined) return undefined
+
+  let next = fenceEnd
+  if (text.startsWith("\n\n", next)) next += 2
+  else if (text.startsWith("\n", next)) next += 1
+  return next
+}
+
+export function stripLeadingUntrustedMetadata(text: string): string {
+  const afterConversationInfo = consumeLeadingMetadataBlock(
+    text,
+    0,
+    CONVERSATION_INFO_HEADER,
+  )
+  if (afterConversationInfo === undefined) return text
+
+  const afterSender = consumeLeadingMetadataBlock(
+    text,
+    afterConversationInfo,
+    SENDER_HEADER,
+  )
+  return text.slice(afterSender ?? afterConversationInfo)
+}
+
 export function selectCaptureEntries(params: {
   messages: AgentMessage[]
   prePromptMessageCount: number
@@ -189,6 +243,7 @@ export function selectCaptureEntries(params: {
   rolloverTime: string
   skipNoReply: boolean
   includeMessageMetadata: boolean
+  stripUntrustedMetadata: boolean
   sessionKey?: string
 }): ConversationCaptureEntry[] {
   const entries: ConversationCaptureEntry[] = []
@@ -220,7 +275,9 @@ export function selectCaptureEntries(params: {
             }),
           }
         : {}),
-      userText: user.text,
+      userText: params.stripUntrustedMetadata
+        ? stripLeadingUntrustedMetadata(user.text)
+        : user.text,
       assistantText,
     })
   }
