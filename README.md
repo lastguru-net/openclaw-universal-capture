@@ -3,7 +3,7 @@
 `openclaw-universal-capture` is a small OpenClaw context engine that captures
 completed user/assistant conversation pairs into append-only Markdown files.
 
-Version `0.1.0` is intentionally narrow:
+Version `0.2.0` is intentionally narrow:
 
 - captures assistant text messages paired with the nearest preceding user message
 - ignores tool calls, tool results, and non-message transcript records
@@ -45,8 +45,11 @@ host timezone.
 `rolloverTime` controls when capture switches to the next conversation day in
 the configured timezone. The default is `04:00`.
 
-`skipNoReply` controls whether literal `NO_REPLY` assistant messages are
-captured. The default is `false`.
+`skipNoReply` controls how turns ending with the assistant text `NO_REPLY` are
+handled. By default it is `false`, so those marker replies are written to the
+conversation file like any other assistant text. Set it to `true` when you want
+to omit turns where `NO_REPLY` means the visible response was delivered through
+some other channel or there was intentionally no chat-visible answer.
 
 ## Output
 

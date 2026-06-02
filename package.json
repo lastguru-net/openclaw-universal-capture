@@ -1,7 +1,7 @@
 {
   "name": "openclaw-universal-capture",
-  "version": "0.1.0",
-  "description": "OpenClaw context engine for append-only markdown conversation capture without interfering with native Codex thread resumes.",
+  "version": "0.2.0",
+  "description": "OpenClaw context engine for append-only Markdown conversation capture.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -37,9 +37,9 @@
     "openclaw": ">=2026.5.31-beta.4"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "openclaw": "2026.5.31-beta.4",
-    "typescript": "^5.9.3"
+    "@types/node": "^24.12.4",
+    "openclaw": "2026.6.1-beta.1",
+    "typescript": "^6.0.3"
   },
   "openclaw": {
     "extensions": [

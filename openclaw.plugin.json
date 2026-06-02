@@ -2,7 +2,7 @@
   "id": "openclaw-universal-capture",
   "kind": "context-engine",
   "name": "OpenClaw Universal Capture",
-  "description": "Append-only markdown conversation capture context engine compatible with native Codex thread resumes.",
+  "description": "Append-only Markdown conversation capture context engine.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -21,7 +21,7 @@
       },
       "skipNoReply": {
         "type": "boolean",
-        "description": "Skip assistant messages whose final text is exactly NO_REPLY. Defaults to false."
+        "description": "When true, omit turns whose assistant text is exactly NO_REPLY. Defaults to false, so NO_REPLY marker turns are captured."
       }
     },
     "required": []
@@ -43,7 +43,7 @@
     },
     "skipNoReply": {
       "label": "Skip NO_REPLY",
-      "help": "When enabled, assistant messages whose text is exactly NO_REPLY are not captured."
+      "help": "When enabled, NO_REPLY marker turns are omitted from the markdown log instead of being captured like normal assistant text."
     }
   }
 }

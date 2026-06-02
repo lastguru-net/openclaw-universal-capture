@@ -18,7 +18,7 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
   readonly info = {
     id: "openclaw-universal-capture",
     name: "OpenClaw Universal Capture",
-    version: "0.1.0",
+    version: "0.2.0",
     ownsCompaction: false,
   } as const
 
@@ -54,7 +54,7 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
       estimatedTokens: 0,
       contextProjection: {
         mode: "thread_bootstrap",
-        epoch: "v0.1",
+        epoch: "v0.2",
         fingerprint: "append-only-md-capture",
       },
     }
