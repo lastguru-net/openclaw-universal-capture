@@ -3,7 +3,7 @@
 `openclaw-universal-capture` is a small OpenClaw context engine that captures
 completed user/assistant conversation pairs into append-only Markdown files.
 
-Version `0.3.0` is intentionally narrow:
+The plugin is intentionally narrow:
 
 - captures assistant text messages paired with the nearest preceding user message
 - ignores tool calls, tool results, and non-message transcript records

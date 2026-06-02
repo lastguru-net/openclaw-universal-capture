@@ -1,6 +1,6 @@
 {
   "name": "openclaw-universal-capture",
-  "version": "0.3.1",
+  "version": "0.3.0",
   "description": "OpenClaw context engine for append-only Markdown conversation capture.",
   "type": "module",
   "main": "./dist/index.js",
