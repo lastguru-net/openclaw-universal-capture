@@ -15,6 +15,20 @@ The plugin is intentionally narrow:
 - returns stable `thread_bootstrap` context projection metadata so native Codex
   threads can resume without lossy per-turn OpenClaw history projection
 
+## Privacy and Retention Warning
+
+This plugin persistently stores completed user/assistant conversations in
+append-only workspace files. Captured text can include sensitive prompts,
+credentials, personal data, confidential business material, and operational
+metadata from connected surfaces.
+
+Before enabling it, operators are responsible for making sure that capture is
+appropriate for their users and environment, that users have any required
+notice or consent, and that the output folder has suitable filesystem,
+backup, sync, and repository access controls. Treat captured files as sensitive
+data. Deleting or rotating old records is not automatic unless you add your own
+retention process.
+
 ## Configuration
 
 ```json
