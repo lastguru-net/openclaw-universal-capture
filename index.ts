@@ -6,8 +6,7 @@ import { UniversalCaptureContextEngine } from "./src/context-engine.js"
 export default definePluginEntry({
   id: "openclaw-universal-capture",
   name: "OpenClaw Universal Capture",
-  description:
-    "Append-only markdown conversation capture context engine compatible with native Codex thread resumes.",
+  description: "OpenClaw context engine for append-only Markdown conversation capture.",
   configSchema: { parse: parseConfig },
 
   register(api: OpenClawPluginApi) {

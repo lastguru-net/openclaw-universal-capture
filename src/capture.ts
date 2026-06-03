@@ -3,7 +3,7 @@ import { basename, dirname, resolve } from "node:path"
 
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime"
 
-import type { UniversalCaptureConfig } from "./config.js"
+import type { CaptureFilter, UniversalCaptureConfig } from "./config.js"
 
 export type ConversationCaptureEntry = {
   date: string
@@ -34,6 +34,13 @@ type DateParts = {
 }
 
 type RecordLike = Record<string, unknown>
+
+type SessionKeyParts = {
+  agent?: string
+  surface?: string
+  channel?: string
+  channelId?: string
+}
 
 function dateFromParts(parts: Intl.DateTimeFormatPart[]): string {
   const value = (type: string) => parts.find((part) => part.type === type)?.value ?? ""
@@ -140,34 +147,57 @@ function messageSenderUsername(message: unknown): string | undefined {
     : undefined
 }
 
-function parseSessionKeyMetadata(
-  sessionKey: string | undefined,
-): Pick<ConversationCaptureMetadata, "agent" | "surface" | "channel"> {
+function parseSessionKey(sessionKey: string | undefined): SessionKeyParts {
   if (!sessionKey) return {}
   const parts = sessionKey.split(":")
   if (parts[0] !== "agent" || parts.length < 3) return {}
 
-  const metadata: Pick<ConversationCaptureMetadata, "agent" | "surface" | "channel"> = {}
-  if (parts[1]) metadata.agent = parts[1]
-  if (parts[2]) metadata.surface = parts[2]
+  const parsed: SessionKeyParts = {}
+  if (parts[1]) parsed.agent = parts[1]
+  if (parts[2]) parsed.surface = parts[2]
   if (parts.length > 3) {
     const channel = parts.slice(3).join(":")
-    if (channel) metadata.channel = channel
+    if (channel) parsed.channel = channel
+    const channelId = parts.at(-1)
+    if (channelId) parsed.channelId = channelId
   }
-  return metadata
+  return parsed
 }
 
 function buildCaptureMetadata(params: {
   sessionKey?: string
   userMessage: AgentMessage
 }): ConversationCaptureMetadata | undefined {
+  const session = parseSessionKey(params.sessionKey)
   const metadata: ConversationCaptureMetadata = {
-    ...parseSessionKeyMetadata(params.sessionKey),
+    ...(session.agent ? { agent: session.agent } : {}),
+    ...(session.surface ? { surface: session.surface } : {}),
+    ...(session.channel ? { channel: session.channel } : {}),
   }
   const senderUsername = messageSenderUsername(params.userMessage)
   if (senderUsername) metadata.senderUsername = senderUsername
 
   return Object.keys(metadata).length > 0 ? metadata : undefined
+}
+
+function filterAllows(filter: CaptureFilter, value: string | undefined): boolean {
+  if (filter.mode === "all") return true
+  if (!value) return filter.mode === "exclude"
+
+  const listed = filter.values.has(value)
+  return filter.mode === "include" ? listed : !listed
+}
+
+function sessionKeyPassesFilters(
+  sessionKey: string | undefined,
+  config: Pick<UniversalCaptureConfig, "agents" | "surfaces" | "channels">,
+): boolean {
+  const session = parseSessionKey(sessionKey)
+  return (
+    filterAllows(config.agents, session.agent) &&
+    filterAllows(config.surfaces, session.surface) &&
+    filterAllows(config.channels, session.channelId)
+  )
 }
 
 function findCorrespondingUser(messages: AgentMessage[], assistantIndex: number): {
@@ -244,9 +274,14 @@ export function selectCaptureEntries(params: {
   skipNoReply: boolean
   includeMessageMetadata: boolean
   stripUntrustedMetadata: boolean
+  agents: CaptureFilter
+  surfaces: CaptureFilter
+  channels: CaptureFilter
   sessionKey?: string
 }): ConversationCaptureEntry[] {
   const entries: ConversationCaptureEntry[] = []
+  if (!sessionKeyPassesFilters(params.sessionKey, params)) return entries
+
   const start = Math.max(0, Math.min(params.prePromptMessageCount, params.messages.length))
 
   for (let index = start; index < params.messages.length; index++) {

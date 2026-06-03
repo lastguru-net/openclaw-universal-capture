@@ -7,6 +7,14 @@ export type UniversalCaptureConfig = {
   skipNoReply: boolean
   includeMessageMetadata: boolean
   stripUntrustedMetadata: boolean
+  agents: CaptureFilter
+  surfaces: CaptureFilter
+  channels: CaptureFilter
+}
+
+export type CaptureFilter = {
+  mode: "all" | "include" | "exclude"
+  values: Set<string>
 }
 
 const DEFAULT_FOLDER = "conversations"
@@ -19,6 +27,9 @@ const ALLOWED_KEYS = new Set([
   "skipNoReply",
   "includeMessageMetadata",
   "stripUntrustedMetadata",
+  "agents",
+  "surfaces",
+  "channels",
 ])
 
 function assertAllowedKeys(config: Record<string, unknown>): void {
@@ -72,6 +83,41 @@ function normalizeFolder(value: unknown): string {
   return normalized.replace(/^\.\/+/, "").replace(/\/+$/, "")
 }
 
+function normalizeFilter(name: string, value: unknown): CaptureFilter {
+  if (value === undefined || value === null) {
+    return { mode: "all", values: new Set() }
+  }
+  if (typeof value !== "string") {
+    throw new Error(`openclaw-universal-capture ${name} must be a string`)
+  }
+
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === "*") {
+    return { mode: "all", values: new Set() }
+  }
+
+  const negated = trimmed.startsWith("!")
+  const listText = negated ? trimmed.slice(1).trim() : trimmed
+  if (!listText || listText === "*") {
+    return { mode: "all", values: new Set() }
+  }
+
+  const values = new Set(
+    listText
+      .split(",")
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0),
+  )
+  if (values.size === 0) {
+    return { mode: "all", values: new Set() }
+  }
+
+  return {
+    mode: negated ? "exclude" : "include",
+    values,
+  }
+}
+
 export function parseConfig(raw: unknown): UniversalCaptureConfig {
   const config =
     raw && typeof raw === "object" && !Array.isArray(raw)
@@ -100,5 +146,8 @@ export function parseConfig(raw: unknown): UniversalCaptureConfig {
       typeof config.stripUntrustedMetadata === "boolean"
         ? config.stripUntrustedMetadata
         : true,
+    agents: normalizeFilter("agents", config.agents),
+    surfaces: normalizeFilter("surfaces", config.surfaces),
+    channels: normalizeFilter("channels", config.channels),
   }
 }

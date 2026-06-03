@@ -18,7 +18,7 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
   readonly info = {
     id: "openclaw-universal-capture",
     name: "OpenClaw Universal Capture",
-    version: "0.3.0",
+    version: "0.4.0",
     ownsCompaction: false,
   } as const
 
@@ -83,6 +83,9 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
       skipNoReply: this.params.config.skipNoReply,
       includeMessageMetadata: this.params.config.includeMessageMetadata,
       stripUntrustedMetadata: this.params.config.stripUntrustedMetadata,
+      agents: this.params.config.agents,
+      surfaces: this.params.config.surfaces,
+      channels: this.params.config.channels,
       sessionKey: params.sessionKey,
     })
     if (entries.length === 0) return

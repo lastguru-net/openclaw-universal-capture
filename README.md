@@ -43,7 +43,10 @@ retention process.
           "rolloverTime": "04:00",
           "skipNoReply": false,
           "includeMessageMetadata": false,
-          "stripUntrustedMetadata": true
+          "stripUntrustedMetadata": true,
+          "agents": "*",
+          "surfaces": "*",
+          "channels": "*"
         }
       }
     },
@@ -81,6 +84,20 @@ using a complete `json` fenced code block. A following `Sender (untrusted
 metadata):` fenced block is also stripped. Metadata-like text that appears later
 in the message, appears in the opposite order, or does not use that exact
 leading structure is preserved.
+
+`agents`, `surfaces`, and `channels` are optional capture filters. Omit a
+filter or set it to `*` to capture all values for that dimension. Otherwise,
+set it to a comma-separated allow list such as `home,mini`. Prefix the list
+with `!` to exclude those values instead, such as `!main,heartbeat`. When more
+than one filter is configured, all configured filters must allow the session
+for the turn to be captured.
+
+Filter values come from `sessionKey`. `agents` matches the agent name,
+`surfaces` matches the surface name, and `channels` matches only the final
+sessionKey element. For example,
+`agent:home:discord:channel:731682904516293847` has channel filter value
+`731682904516293847`, while `agent:main:main:heartbeat` has channel filter
+value `heartbeat`.
 
 ## Output
 

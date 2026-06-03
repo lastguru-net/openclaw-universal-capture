@@ -30,6 +30,18 @@
       "stripUntrustedMetadata": {
         "type": "boolean",
         "description": "When true, strip leading OpenClaw untrusted metadata blocks from captured user text. Defaults to true."
+      },
+      "agents": {
+        "type": "string",
+        "description": "Optional agent-name filter. Omit or use * for all, use comma-separated values to include, or prefix with ! to exclude."
+      },
+      "surfaces": {
+        "type": "string",
+        "description": "Optional surface-name filter. Omit or use * for all, use comma-separated values to include, or prefix with ! to exclude."
+      },
+      "channels": {
+        "type": "string",
+        "description": "Optional channel-id filter using the final sessionKey element. Omit or use * for all, use comma-separated values to include, or prefix with ! to exclude."
       }
     },
     "required": []
@@ -60,6 +72,21 @@
     "stripUntrustedMetadata": {
       "label": "Strip Untrusted Metadata",
       "help": "When enabled, leading Conversation info and following Sender untrusted metadata blocks are omitted from captured user text."
+    },
+    "agents": {
+      "label": "Agent Filter",
+      "placeholder": "home,mini or !main",
+      "help": "Capture only listed agent names, exclude listed names with !, or use * / blank for all."
+    },
+    "surfaces": {
+      "label": "Surface Filter",
+      "placeholder": "discord or !main",
+      "help": "Capture only listed surface names, exclude listed names with !, or use * / blank for all."
+    },
+    "channels": {
+      "label": "Channel Filter",
+      "placeholder": "731682904516293847 or !heartbeat",
+      "help": "Capture by the final sessionKey element only. Use comma-separated values, ! for exclusion, or * / blank for all."
     }
   }
 }

@@ -10,10 +10,25 @@ import {
   appendCaptureEntries,
   extractMessageText,
   resolveCaptureFileTarget,
-  selectCaptureEntries,
+  selectCaptureEntries as selectCaptureEntriesBase,
   stripLeadingUntrustedMetadata,
 } from "../src/capture.js"
 import { parseConfig } from "../src/config.js"
+
+type SelectCaptureEntriesParams = Parameters<typeof selectCaptureEntriesBase>[0]
+
+function selectCaptureEntries(
+  params: Omit<SelectCaptureEntriesParams, "agents" | "surfaces" | "channels"> &
+    Partial<Pick<SelectCaptureEntriesParams, "agents" | "surfaces" | "channels">>,
+) {
+  const config = parseConfig({})
+  return selectCaptureEntriesBase({
+    ...params,
+    agents: params.agents ?? config.agents,
+    surfaces: params.surfaces ?? config.surfaces,
+    channels: params.channels ?? config.channels,
+  })
+}
 
 function user(text: string, timestamp = Date.UTC(2026, 5, 1, 10, 0)): AgentMessage {
   return {
@@ -94,6 +109,9 @@ test("parseConfig defaults to host timezone and 04:00 rollover", () => {
     skipNoReply: false,
     includeMessageMetadata: false,
     stripUntrustedMetadata: true,
+    agents: { mode: "all", values: new Set<string>() },
+    surfaces: { mode: "all", values: new Set<string>() },
+    channels: { mode: "all", values: new Set<string>() },
   })
 })
 
@@ -102,6 +120,27 @@ test("parseConfig rejects invalid folder and rollover config", () => {
   assert.throws(() => parseConfig({ folder: "../captures" }), /inside the workspace/)
   assert.throws(() => parseConfig({ rolloverTime: "4:00" }), /HH:MM/)
   assert.throws(() => parseConfig({ rolloverTime: "24:00" }), /HH:MM/)
+})
+
+test("parseConfig supports include, exclude, and wildcard capture filters", () => {
+  const config = parseConfig({
+    agents: "home, mini",
+    surfaces: "!main,heartbeat",
+    channels: "*",
+  })
+
+  assert.equal(config.agents.mode, "include")
+  assert.deepEqual([...config.agents.values], ["home", "mini"])
+  assert.equal(config.surfaces.mode, "exclude")
+  assert.deepEqual([...config.surfaces.values], ["main", "heartbeat"])
+  assert.equal(config.channels.mode, "all")
+  assert.deepEqual([...config.channels.values], [])
+})
+
+test("parseConfig rejects non-string capture filters", () => {
+  assert.throws(() => parseConfig({ agents: ["home"] }), /agents must be a string/)
+  assert.throws(() => parseConfig({ surfaces: true }), /surfaces must be a string/)
+  assert.throws(() => parseConfig({ channels: 731682904516293847 }), /channels must be a string/)
 })
 
 test("extractMessageText ignores tool calls and keeps text blocks", () => {
@@ -237,6 +276,122 @@ test("selectCaptureEntries can include metadata from 4-part session keys", () =>
     surface: "main",
     channel: "heartbeat",
   })
+})
+
+test("selectCaptureEntries filters by included agent surface and channel id", () => {
+  const config = parseConfig({
+    agents: "home,mini",
+    surfaces: "discord",
+    channels: "731682904516293847",
+  })
+
+  const captured = selectCaptureEntries({
+    messages: [user("question"), assistant("answer")],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+    includeMessageMetadata: true,
+    stripUntrustedMetadata: true,
+    agents: config.agents,
+    surfaces: config.surfaces,
+    channels: config.channels,
+    sessionKey: "agent:home:discord:channel:731682904516293847",
+  })
+  const skippedByChannel = selectCaptureEntries({
+    messages: [user("question"), assistant("answer")],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+    includeMessageMetadata: true,
+    stripUntrustedMetadata: true,
+    agents: config.agents,
+    surfaces: config.surfaces,
+    channels: config.channels,
+    sessionKey: "agent:home:discord:channel:999999999999999999",
+  })
+
+  assert.equal(captured.length, 1)
+  assert.equal(captured[0]?.metadata?.channel, "channel:731682904516293847")
+  assert.equal(skippedByChannel.length, 0)
+})
+
+test("selectCaptureEntries filters 4-part session keys by their last element", () => {
+  const config = parseConfig({
+    agents: "main",
+    surfaces: "main",
+    channels: "heartbeat",
+  })
+
+  const entries = selectCaptureEntries({
+    messages: [user("question"), assistant("answer")],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+    includeMessageMetadata: true,
+    stripUntrustedMetadata: true,
+    agents: config.agents,
+    surfaces: config.surfaces,
+    channels: config.channels,
+    sessionKey: "agent:main:main:heartbeat",
+  })
+
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0]?.metadata?.channel, "heartbeat")
+})
+
+test("selectCaptureEntries combines negated filters with positive filters", () => {
+  const config = parseConfig({
+    agents: "!main",
+    surfaces: "discord",
+    channels: "!731682904516293847",
+  })
+
+  const allowed = selectCaptureEntries({
+    messages: [user("question"), assistant("answer")],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+    includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
+    agents: config.agents,
+    surfaces: config.surfaces,
+    channels: config.channels,
+    sessionKey: "agent:mini:discord:channel:642918573406128735",
+  })
+  const blockedAgent = selectCaptureEntries({
+    messages: [user("question"), assistant("answer")],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+    includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
+    agents: config.agents,
+    surfaces: config.surfaces,
+    channels: config.channels,
+    sessionKey: "agent:main:discord:channel:642918573406128735",
+  })
+  const blockedChannel = selectCaptureEntries({
+    messages: [user("question"), assistant("answer")],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+    includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
+    agents: config.agents,
+    surfaces: config.surfaces,
+    channels: config.channels,
+    sessionKey: "agent:mini:discord:channel:731682904516293847",
+  })
+
+  assert.equal(allowed.length, 1)
+  assert.equal(blockedAgent.length, 0)
+  assert.equal(blockedChannel.length, 0)
 })
 
 test("stripLeadingUntrustedMetadata removes exact leading conversation metadata", () => {
@@ -377,6 +532,9 @@ test("appendCaptureEntries creates Conversation file frontmatter", async () => {
         skipNoReply: false,
         includeMessageMetadata: true,
         stripUntrustedMetadata: true,
+        agents: { mode: "all", values: new Set<string>() },
+        surfaces: { mode: "all", values: new Set<string>() },
+        channels: { mode: "all", values: new Set<string>() },
       },
       entries: [
         {
