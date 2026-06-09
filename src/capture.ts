@@ -8,6 +8,8 @@ import type { CaptureFilter, UniversalCaptureConfig } from "./config.js"
 export type ConversationCaptureEntry = {
   date: string
   time: string
+  timestamp: string
+  senderUsername?: string
   metadata?: ConversationCaptureMetadata
   userText: string
   assistantText: string
@@ -145,6 +147,16 @@ function messageSenderUsername(message: unknown): string | undefined {
   return typeof senderUsername === "string" && senderUsername.trim().length > 0
     ? senderUsername.trim()
     : undefined
+}
+
+function messageTimestampIso(message: unknown): string {
+  const timestamp = messageTimestamp(message)
+  const date =
+    typeof timestamp === "number" || typeof timestamp === "string"
+      ? new Date(timestamp)
+      : new Date()
+  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date
+  return safeDate.toISOString()
 }
 
 function parseSessionKey(sessionKey: string | undefined): SessionKeyParts {
@@ -302,6 +314,10 @@ export function selectCaptureEntries(params: {
     )
     entries.push({
       ...dateParts,
+      timestamp: messageTimestampIso(message),
+      ...(messageSenderUsername(user.message)
+        ? { senderUsername: messageSenderUsername(user.message) }
+        : {}),
       ...(params.includeMessageMetadata
         ? {
             metadata: buildCaptureMetadata({

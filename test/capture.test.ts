@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import assert from "node:assert/strict"
 import test from "node:test"
 
@@ -14,6 +14,12 @@ import {
   stripLeadingUntrustedMetadata,
 } from "../src/capture.js"
 import { parseConfig } from "../src/config.js"
+import {
+  parseRecallLines,
+  renderRecallToolOutput,
+  resolveRecallFilePath,
+  writeRecallEntries,
+} from "../src/recall.js"
 
 type SelectCaptureEntriesParams = Parameters<typeof selectCaptureEntriesBase>[0]
 
@@ -104,6 +110,9 @@ function toolOnlyAssistant(timestamp = Date.UTC(2026, 5, 1, 10, 4)): AgentMessag
 test("parseConfig defaults to host timezone and 04:00 rollover", () => {
   assert.deepEqual(parseConfig({}), {
     folder: "conversations",
+    recallFolder: "recall",
+    recallTurns: 0,
+    recallMaxBytes: 0,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     rolloverTime: "04:00",
     skipNoReply: false,
@@ -118,8 +127,13 @@ test("parseConfig defaults to host timezone and 04:00 rollover", () => {
 test("parseConfig rejects invalid folder and rollover config", () => {
   assert.throws(() => parseConfig({ folder: "/tmp/captures" }), /workspace-relative/)
   assert.throws(() => parseConfig({ folder: "../captures" }), /inside the workspace/)
+  assert.throws(() => parseConfig({ recallFolder: "/tmp/recall" }), /workspace-relative/)
+  assert.throws(() => parseConfig({ recallFolder: "../recall" }), /inside the workspace/)
   assert.throws(() => parseConfig({ rolloverTime: "4:00" }), /HH:MM/)
   assert.throws(() => parseConfig({ rolloverTime: "24:00" }), /HH:MM/)
+  assert.throws(() => parseConfig({ recallTurns: -1 }), /recallTurns/)
+  assert.throws(() => parseConfig({ recallTurns: 1.5 }), /recallTurns/)
+  assert.throws(() => parseConfig({ recallMaxBytes: -1 }), /recallMaxBytes/)
 })
 
 test("parseConfig supports include, exclude, and wildcard capture filters", () => {
@@ -140,7 +154,7 @@ test("parseConfig supports include, exclude, and wildcard capture filters", () =
 test("parseConfig rejects non-string capture filters", () => {
   assert.throws(() => parseConfig({ agents: ["home"] }), /agents must be a string/)
   assert.throws(() => parseConfig({ surfaces: true }), /surfaces must be a string/)
-  assert.throws(() => parseConfig({ channels: 731682904516293847 }), /channels must be a string/)
+  assert.throws(() => parseConfig({ channels: 123456789012345678 }), /channels must be a string/)
 })
 
 test("extractMessageText ignores tool calls and keeps text blocks", () => {
@@ -179,6 +193,7 @@ test("selectCaptureEntries captures assistant text with nearest user", () => {
     {
       date: "2026-06-01",
       time: "10:05",
+      timestamp: "2026-06-01T10:05:00.000Z",
       userText: "new request",
       assistantText: "final reply",
     },
@@ -203,6 +218,7 @@ test("selectCaptureEntries uses rollover time for conversation date", () => {
     {
       date: "2026-05-31",
       time: "03:30",
+      timestamp: "2026-06-01T03:30:00.000Z",
       userText: "late question",
       assistantText: "late reply",
     },
@@ -239,7 +255,7 @@ test("selectCaptureEntries can skip NO_REPLY", () => {
 test("selectCaptureEntries can include metadata from 5-part session keys", () => {
   const entries = selectCaptureEntries({
     messages: [
-      userWithMetadata("question", { senderUsername: "lastguru" }),
+      userWithMetadata("question", { senderUsername: "operator" }),
       assistant("answer"),
     ],
     prePromptMessageCount: 0,
@@ -248,15 +264,16 @@ test("selectCaptureEntries can include metadata from 5-part session keys", () =>
     skipNoReply: false,
     includeMessageMetadata: true,
     stripUntrustedMetadata: true,
-    sessionKey: "agent:home:discord:channel:731682904516293847",
+    sessionKey: "agent:home:discord:channel:123456789012345678",
   })
 
   assert.deepEqual(entries[0]?.metadata, {
     agent: "home",
     surface: "discord",
-    channel: "channel:731682904516293847",
-    senderUsername: "lastguru",
+    channel: "channel:123456789012345678",
+    senderUsername: "operator",
   })
+  assert.equal(entries[0]?.senderUsername, "operator")
 })
 
 test("selectCaptureEntries can include metadata from 4-part session keys", () => {
@@ -282,7 +299,7 @@ test("selectCaptureEntries filters by included agent surface and channel id", ()
   const config = parseConfig({
     agents: "home,mini",
     surfaces: "discord",
-    channels: "731682904516293847",
+    channels: "123456789012345678",
   })
 
   const captured = selectCaptureEntries({
@@ -296,7 +313,7 @@ test("selectCaptureEntries filters by included agent surface and channel id", ()
     agents: config.agents,
     surfaces: config.surfaces,
     channels: config.channels,
-    sessionKey: "agent:home:discord:channel:731682904516293847",
+    sessionKey: "agent:home:discord:channel:123456789012345678",
   })
   const skippedByChannel = selectCaptureEntries({
     messages: [user("question"), assistant("answer")],
@@ -313,7 +330,7 @@ test("selectCaptureEntries filters by included agent surface and channel id", ()
   })
 
   assert.equal(captured.length, 1)
-  assert.equal(captured[0]?.metadata?.channel, "channel:731682904516293847")
+  assert.equal(captured[0]?.metadata?.channel, "channel:123456789012345678")
   assert.equal(skippedByChannel.length, 0)
 })
 
@@ -346,7 +363,7 @@ test("selectCaptureEntries combines negated filters with positive filters", () =
   const config = parseConfig({
     agents: "!main",
     surfaces: "discord",
-    channels: "!731682904516293847",
+    channels: "!123456789012345678",
   })
 
   const allowed = selectCaptureEntries({
@@ -386,7 +403,7 @@ test("selectCaptureEntries combines negated filters with positive filters", () =
     agents: config.agents,
     surfaces: config.surfaces,
     channels: config.channels,
-    sessionKey: "agent:mini:discord:channel:731682904516293847",
+    sessionKey: "agent:mini:discord:channel:123456789012345678",
   })
 
   assert.equal(allowed.length, 1)
@@ -399,7 +416,7 @@ test("stripLeadingUntrustedMetadata removes exact leading conversation metadata"
     "Conversation info (untrusted metadata):",
     "```json",
     "{",
-    '  "chat_id": "channel:731682904516293847"',
+    '  "chat_id": "channel:123456789012345678"',
     "}",
     "```",
     "",
@@ -414,7 +431,7 @@ test("stripLeadingUntrustedMetadata removes sender metadata only after conversat
     "Conversation info (untrusted metadata):",
     "```json",
     "{",
-    '  "chat_id": "channel:731682904516293847"',
+    '  "chat_id": "channel:123456789012345678"',
     "}",
     "```",
     "",
@@ -520,6 +537,176 @@ test("selectCaptureEntries strips leading untrusted metadata by default config",
   assert.equal(entries[0]?.userText, "actual message")
 })
 
+test("writeRecallEntries writes safe per-session ndjson and prunes by turn count", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "universal-capture-recall-"))
+  try {
+    const config = parseConfig({ recallTurns: 2, recallFolder: "recall" })
+    const sessionKey = "agent:home:discord:channel:123456789012345678"
+    const entries = selectCaptureEntries({
+      messages: [
+        user("one", Date.UTC(2026, 5, 1, 10, 0)),
+        assistant("first", Date.UTC(2026, 5, 1, 10, 1)),
+        user("two", Date.UTC(2026, 5, 1, 10, 2)),
+        assistant("second", Date.UTC(2026, 5, 1, 10, 3)),
+        user("three", Date.UTC(2026, 5, 1, 10, 4)),
+        assistant("third", Date.UTC(2026, 5, 1, 10, 5)),
+      ],
+      prePromptMessageCount: 0,
+      timezone: "UTC",
+      rolloverTime: "04:00",
+      skipNoReply: false,
+      includeMessageMetadata: false,
+      stripUntrustedMetadata: true,
+      sessionKey,
+    })
+
+    await writeRecallEntries({
+      workspaceDir: dir,
+      config,
+      sessionId: "session-a",
+      sessionKey,
+      entries,
+    })
+
+    const recallPath = resolveRecallFilePath({
+      workspaceDir: dir,
+      recallFolder: config.recallFolder,
+      sessionKey,
+    })
+    assert.match(recallPath, /recall\/[^/]+\.ndjson$/)
+    assert.doesNotMatch(recallPath, /agent:home/)
+
+    const parsed = parseRecallLines(await readFile(recallPath, "utf8"))
+    assert.equal(parsed.malformedLines, 0)
+    assert.deepEqual(
+      parsed.entries.map((entry) => [entry.userText, entry.assistantText]),
+      [
+        ["two", "second"],
+        ["three", "third"],
+      ],
+    )
+    assert.equal(parsed.entries[0]?.sessionId, "session-a")
+    assert.equal(parsed.entries[0]?.sessionKey, sessionKey)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test("writeRecallEntries salvages valid ndjson and ignores malformed old lines", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "universal-capture-recall-"))
+  try {
+    const config = parseConfig({ recallTurns: 3, recallFolder: "recall" })
+    const sessionKey = "agent:home:discord:channel:123456789012345678"
+    const recallPath = resolveRecallFilePath({
+      workspaceDir: dir,
+      recallFolder: config.recallFolder,
+      sessionKey,
+    })
+    await mkdir(dirname(recallPath), { recursive: true })
+    await writeFile(
+      recallPath,
+      [
+        JSON.stringify({
+          timestamp: "2026-06-01T09:00:00.000Z",
+          sessionKey,
+          userText: "valid old",
+          assistantText: "valid reply",
+        }),
+        "{not json",
+        JSON.stringify({ timestamp: "missing fields" }),
+        "",
+      ].join("\n"),
+      "utf8",
+    )
+
+    const entries = selectCaptureEntries({
+      messages: [user("new"), assistant("new reply")],
+      prePromptMessageCount: 0,
+      timezone: "UTC",
+      rolloverTime: "04:00",
+      skipNoReply: false,
+      includeMessageMetadata: false,
+      stripUntrustedMetadata: true,
+      sessionKey,
+    })
+    const result = await writeRecallEntries({
+      workspaceDir: dir,
+      config,
+      sessionKey,
+      entries,
+    })
+
+    assert.equal(result.malformedLines, 2)
+    const parsed = parseRecallLines(await readFile(recallPath, "utf8"))
+    assert.equal(parsed.malformedLines, 0)
+    assert.deepEqual(
+      parsed.entries.map((entry) => entry.userText),
+      ["valid old", "new"],
+    )
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test("writeRecallEntries keeps newest line even when byte limit is smaller", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "universal-capture-recall-"))
+  try {
+    const config = parseConfig({ recallTurns: 5, recallMaxBytes: 20 })
+    const sessionKey = "agent:home:discord:channel:123456789012345678"
+    const entries = selectCaptureEntries({
+      messages: [user("newest question"), assistant("newest reply with many bytes")],
+      prePromptMessageCount: 0,
+      timezone: "UTC",
+      rolloverTime: "04:00",
+      skipNoReply: false,
+      includeMessageMetadata: false,
+      stripUntrustedMetadata: true,
+      sessionKey,
+    })
+
+    await writeRecallEntries({
+      workspaceDir: dir,
+      config,
+      sessionKey,
+      entries,
+    })
+
+    const parsed = parseRecallLines(
+      await readFile(
+        resolveRecallFilePath({
+          workspaceDir: dir,
+          recallFolder: config.recallFolder,
+          sessionKey,
+        }),
+        "utf8",
+      ),
+    )
+    assert.equal(parsed.entries.length, 1)
+    assert.equal(parsed.entries[0]?.assistantText, "newest reply with many bytes")
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test("renderRecallToolOutput truncates output without corrupting utf8", () => {
+  const text = renderRecallToolOutput({
+    entries: [
+      {
+        timestamp: "2026-06-01T10:05:00.000Z",
+        sessionKey: "agent:home:discord:channel:123456789012345678",
+        senderUsername: "operator",
+        userText: "question",
+        assistantText: "answer with utf8 āāāāā",
+      },
+    ],
+    malformedLines: 1,
+    recallMaxBytes: 80,
+  })
+
+  assert.match(text, /truncated by recallMaxBytes/)
+  assert.doesNotMatch(text, /\uFFFD/)
+})
+
 test("appendCaptureEntries creates Conversation file frontmatter", async () => {
   const workspaceDir = await mkdtemp(join(tmpdir(), "ouc-"))
   try {
@@ -527,6 +714,9 @@ test("appendCaptureEntries creates Conversation file frontmatter", async () => {
       workspaceDir,
       config: {
         folder: "conversations",
+        recallFolder: "recall",
+        recallTurns: 0,
+        recallMaxBytes: 0,
         timezone: "UTC",
         rolloverTime: "04:00",
         skipNoReply: false,
@@ -540,11 +730,12 @@ test("appendCaptureEntries creates Conversation file frontmatter", async () => {
         {
           date: "2026-06-01",
           time: "10:05",
+          timestamp: "2026-06-01T10:05:00.000Z",
           metadata: {
             agent: "home",
             surface: "discord",
-            channel: "channel:731682904516293847",
-            senderUsername: "lastguru",
+            channel: "channel:123456789012345678",
+            senderUsername: "operator",
           },
           userText: "new request",
           assistantText: "final reply",
@@ -564,7 +755,7 @@ test("appendCaptureEntries creates Conversation file frontmatter", async () => {
       /permalink: conversations\/conversations-2026-06-01/,
     )
     assert.match(content, /# Conversations 2026-06-01/)
-    assert.match(content, /### 10:05\nAgent: home\nSurface: discord\nChannel: channel:731682904516293847\nSender: lastguru/)
+    assert.match(content, /### 10:05\nAgent: home\nSurface: discord\nChannel: channel:123456789012345678\nSender: operator/)
     assert.match(content, /\*\*User:\*\*\nnew request/)
     assert.match(content, /\*\*Assistant:\*\*\nfinal reply/)
   } finally {

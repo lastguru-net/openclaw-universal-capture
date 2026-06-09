@@ -11,6 +11,9 @@ The plugin is intentionally narrow:
 - creates the daily file lazily with `Conversation` frontmatter
 - strips leading OpenClaw untrusted metadata blocks from captured user messages
   by default
+- optionally writes a bounded per-session NDJSON recall buffer
+- optionally registers `universal_recall` so agents can recall recent turns from
+  their current session
 - returns unchanged context from `assemble()`
 - returns stable `thread_bootstrap` context projection metadata so native Codex
   threads can resume without lossy per-turn OpenClaw history projection
@@ -18,9 +21,10 @@ The plugin is intentionally narrow:
 ## Privacy and Retention Warning
 
 This plugin persistently stores completed user/assistant conversations in
-append-only workspace files. Captured text can include sensitive prompts,
-credentials, personal data, confidential business material, and operational
-metadata from connected surfaces.
+append-only workspace files. When recall is enabled, it also stores bounded
+per-session NDJSON files containing recent request-response turns. Captured text
+can include sensitive prompts, credentials, personal data, confidential
+business material, and operational metadata from connected surfaces.
 
 Before enabling it, operators are responsible for making sure that capture is
 appropriate for their users and environment, that users have any required
@@ -39,6 +43,9 @@ retention process.
         "enabled": true,
         "config": {
           "folder": "conversations",
+          "recallFolder": "recall",
+          "recallTurns": 0,
+          "recallMaxBytes": 0,
           "timezone": "Europe/Riga",
           "rolloverTime": "04:00",
           "skipNoReply": false,
@@ -59,6 +66,20 @@ retention process.
 
 `folder` must be relative to the OpenClaw workspace. The default is
 `conversations`.
+
+`recallFolder` must be relative to the OpenClaw workspace. The default is
+`recall`.
+
+`recallTurns` controls the number of recent request-response turns retained per
+`sessionKey`. The default is `0`, which disables recall storage and does not
+register the `universal_recall` tool.
+
+`recallMaxBytes` limits both the per-session recall file and the
+`universal_recall` tool output. The default is `0`, meaning no plugin-owned byte
+limit. Recall files are pruned only by removing whole older NDJSON lines; the
+newest captured turn is always retained even if it exceeds the configured byte
+limit. Stored lines are not truncated. Tool output may be truncated to respect
+the configured limit.
 
 `timezone` controls daily rollover and entry timestamps. The default is the
 host timezone.
@@ -95,9 +116,41 @@ for the turn to be captured.
 Filter values come from `sessionKey`. `agents` matches the agent name,
 `surfaces` matches the surface name, and `channels` matches only the final
 sessionKey element. For example,
-`agent:home:discord:channel:731682904516293847` has channel filter value
-`731682904516293847`, while `agent:main:main:heartbeat` has channel filter
+`agent:home:discord:channel:123456789012345678` has channel filter value
+`123456789012345678`, while `agent:main:main:heartbeat` has channel filter
 value `heartbeat`.
+
+## Recall Tool
+
+When `recallTurns` is greater than `0`, the plugin registers the
+`universal_recall` tool. The tool takes no parameters and reads only the recall
+file for the current runtime-provided `sessionKey`; it does not accept a
+model-supplied session selector.
+
+Agents can call `universal_recall` during startup to retrieve recent
+request-response turns from the same session. This is best-effort explicit
+recall, not automatic prompt injection. It avoids context-projection and native
+Codex compaction compatibility problems by letting the agent decide when to
+request recent context.
+
+Recall file names use a safe encoded form of `sessionKey` and are written under
+`recallFolder`. Each NDJSON line stores:
+
+```json
+{
+  "timestamp": "2026-06-01T10:05:00.000Z",
+  "sessionId": "runtime-session-id",
+  "sessionKey": "agent:home:discord:channel:123456789012345678",
+  "senderUsername": "operator",
+  "userText": "...",
+  "assistantText": "..."
+}
+```
+
+Malformed old NDJSON lines are ignored during recall-file rewrite so a damaged
+line does not break future capture. The rewrite salvages valid old entries,
+appends the newest turn, prunes from the oldest valid entries, writes a
+temporary file, and then renames it into place.
 
 ## Output
 
@@ -126,8 +179,8 @@ Entries are appended:
 ### 10:05
 Agent: home
 Surface: discord
-Channel: channel:731682904516293847
-Sender: lastguru
+Channel: channel:123456789012345678
+Sender: operator
 
 **User:**
 ...

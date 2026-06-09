@@ -2,6 +2,7 @@ import { definePluginEntry, type OpenClawPluginApi } from "openclaw/plugin-sdk/p
 
 import { parseConfig } from "./src/config.js"
 import { UniversalCaptureContextEngine } from "./src/context-engine.js"
+import { createUniversalRecallTool } from "./src/recall.js"
 
 export default definePluginEntry({
   id: "openclaw-universal-capture",
@@ -11,6 +12,12 @@ export default definePluginEntry({
 
   register(api: OpenClawPluginApi) {
     const config = parseConfig(api.pluginConfig)
+
+    if (config.recallTurns > 0) {
+      api.registerTool((ctx) => createUniversalRecallTool({ config, context: ctx }), {
+        name: "universal_recall",
+      })
+    }
 
     api.registerContextEngine(
       "openclaw-universal-capture",

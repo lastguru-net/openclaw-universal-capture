@@ -11,6 +11,20 @@
         "type": "string",
         "description": "Workspace-relative folder for daily conversation markdown files."
       },
+      "recallFolder": {
+        "type": "string",
+        "description": "Workspace-relative folder for per-session NDJSON recall files. Defaults to recall."
+      },
+      "recallTurns": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Number of recent request-response turns to retain per sessionKey. Defaults to 0, which disables recall."
+      },
+      "recallMaxBytes": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Maximum bytes for a per-session recall file and recall tool output. Defaults to 0 for no size limit. The newest stored turn is always retained."
+      },
       "timezone": {
         "type": "string",
         "description": "IANA timezone used for daily rollover and entry times. Defaults to the host timezone."
@@ -52,6 +66,21 @@
       "placeholder": "conversations",
       "help": "Workspace-relative folder for daily Conversation markdown files."
     },
+    "recallFolder": {
+      "label": "Recall Folder",
+      "placeholder": "recall",
+      "help": "Workspace-relative folder for per-session NDJSON recall files."
+    },
+    "recallTurns": {
+      "label": "Recall Turns",
+      "placeholder": "0",
+      "help": "Number of recent request-response turns retained per sessionKey. Set to 0 to disable recall."
+    },
+    "recallMaxBytes": {
+      "label": "Recall Max Bytes",
+      "placeholder": "0",
+      "help": "Maximum bytes for stored recall files and recall tool output. Set to 0 for no size limit."
+    },
     "timezone": {
       "label": "Rollover Timezone",
       "help": "IANA timezone used for daily file rollover and entry timestamps. Defaults to the host timezone."
@@ -85,8 +114,11 @@
     },
     "channels": {
       "label": "Channel Filter",
-      "placeholder": "731682904516293847 or !heartbeat",
+      "placeholder": "123456789012345678 or !heartbeat",
       "help": "Capture by the final sessionKey element only. Use comma-separated values, ! for exclusion, or * / blank for all."
     }
+  },
+  "contracts": {
+    "tools": ["universal_recall"]
   }
 }

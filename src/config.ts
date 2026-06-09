@@ -2,6 +2,9 @@ import { isAbsolute, normalize } from "node:path"
 
 export type UniversalCaptureConfig = {
   folder: string
+  recallFolder: string
+  recallTurns: number
+  recallMaxBytes: number
   timezone: string
   rolloverTime: string
   skipNoReply: boolean
@@ -18,10 +21,14 @@ export type CaptureFilter = {
 }
 
 const DEFAULT_FOLDER = "conversations"
+const DEFAULT_RECALL_FOLDER = "recall"
 const DEFAULT_ROLLOVER_TIME = "04:00"
 
 const ALLOWED_KEYS = new Set([
   "folder",
+  "recallFolder",
+  "recallTurns",
+  "recallMaxBytes",
   "timezone",
   "rolloverTime",
   "skipNoReply",
@@ -83,6 +90,14 @@ function normalizeFolder(value: unknown): string {
   return normalized.replace(/^\.\/+/, "").replace(/\/+$/, "")
 }
 
+function normalizeNonNegativeInteger(name: string, value: unknown): number {
+  if (value === undefined || value === null) return 0
+  if (!Number.isInteger(value) || typeof value !== "number" || value < 0) {
+    throw new Error(`openclaw-universal-capture ${name} must be a non-negative integer`)
+  }
+  return value
+}
+
 function normalizeFilter(name: string, value: unknown): CaptureFilter {
   if (value === undefined || value === null) {
     return { mode: "all", values: new Set() }
@@ -134,6 +149,9 @@ export function parseConfig(raw: unknown): UniversalCaptureConfig {
 
   return {
     folder: normalizeFolder(config.folder),
+    recallFolder: normalizeFolder(config.recallFolder ?? DEFAULT_RECALL_FOLDER),
+    recallTurns: normalizeNonNegativeInteger("recallTurns", config.recallTurns),
+    recallMaxBytes: normalizeNonNegativeInteger("recallMaxBytes", config.recallMaxBytes),
     timezone,
     rolloverTime: normalizeRolloverTime(config.rolloverTime),
     skipNoReply:

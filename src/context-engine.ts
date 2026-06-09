@@ -13,12 +13,13 @@ import {
   selectCaptureEntries,
 } from "./capture.js"
 import type { UniversalCaptureConfig } from "./config.js"
+import { writeRecallEntries } from "./recall.js"
 
 export class UniversalCaptureContextEngine implements HarnessContextEngine {
   readonly info = {
     id: "openclaw-universal-capture",
     name: "OpenClaw Universal Capture",
-    version: "0.4.0",
+    version: "0.5.0",
     ownsCompaction: false,
   } as const
 
@@ -63,6 +64,7 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
   }
 
   async afterTurn(params: {
+    sessionId: string
     sessionKey?: string
     messages: AgentMessage[]
     prePromptMessageCount: number
@@ -95,6 +97,26 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
       config: this.params.config,
       entries,
     })
+    if (this.params.config.recallTurns > 0 && params.sessionKey) {
+      try {
+        const recall = await writeRecallEntries({
+          workspaceDir,
+          config: this.params.config,
+          sessionId: params.sessionId,
+          sessionKey: params.sessionKey,
+          entries,
+        })
+        if (recall.malformedLines > 0) {
+          this.params.logger?.warn(
+            `openclaw-universal-capture ignored ${recall.malformedLines} malformed recall line${recall.malformedLines === 1 ? "" : "s"}`,
+          )
+        }
+      } catch (error) {
+        this.params.logger?.warn(
+          `openclaw-universal-capture skipped recall write: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
     this.params.logger?.debug?.(
       `openclaw-universal-capture appended ${written} conversation entr${written === 1 ? "y" : "ies"}`,
     )
