@@ -212,7 +212,7 @@ export function renderRecallToolOutput(params: {
   if (params.entries.length === 0) {
     return params.malformedLines > 0
       ? `No valid recalled turns found. Ignored ${params.malformedLines} malformed recall line${params.malformedLines === 1 ? "" : "s"}.`
-      : "No recalled turns found for this session."
+      : "No recalled turns found for this sessionKey."
   }
 
   const renderedEntries = params.entries.map(renderRecallEntry)
@@ -239,7 +239,7 @@ export function createUniversalRecallTool(params: {
     name: "universal_recall",
     label: "Universal Recall",
     description:
-      "Recall recent request-response turns captured for the current OpenClaw session.",
+      "Recall recent request-response turns captured for the current OpenClaw sessionKey, such as the current channel-bound conversation.",
     parameters: {},
     execute: async () => {
       const ctx = params.context

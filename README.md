@@ -11,9 +11,9 @@ The plugin is intentionally narrow:
 - creates the daily file lazily with `Conversation` frontmatter
 - strips leading OpenClaw untrusted metadata blocks from captured user messages
   by default
-- optionally writes a bounded per-session NDJSON recall buffer
+- optionally writes a bounded per-`sessionKey` NDJSON recall buffer
 - optionally registers `universal_recall` so agents can recall recent turns from
-  their current session
+  the current runtime-provided conversation key
 - returns unchanged context from `assemble()`
 - returns stable `thread_bootstrap` context projection metadata so native Codex
   threads can resume without lossy per-turn OpenClaw history projection
@@ -22,9 +22,10 @@ The plugin is intentionally narrow:
 
 This plugin persistently stores completed user/assistant conversations in
 append-only workspace files. When recall is enabled, it also stores bounded
-per-session NDJSON files containing recent request-response turns. Captured text
-can include sensitive prompts, credentials, personal data, confidential
-business material, and operational metadata from connected surfaces.
+per-`sessionKey` NDJSON files containing recent request-response turns.
+Captured text can include sensitive prompts, credentials, personal data,
+confidential business material, and operational metadata from connected
+surfaces.
 
 Before enabling it, operators are responsible for making sure that capture is
 appropriate for their users and environment, that users have any required
@@ -74,7 +75,7 @@ retention process.
 `sessionKey`. The default is `0`, which disables recall storage and does not
 register the `universal_recall` tool.
 
-`recallMaxBytes` limits both the per-session recall file and the
+`recallMaxBytes` limits both the per-`sessionKey` recall file and the
 `universal_recall` tool output. The default is `0`, meaning no plugin-owned byte
 limit. Recall files are pruned only by removing whole older NDJSON lines; the
 newest captured turn is always retained even if it exceeds the configured byte
@@ -127,11 +128,19 @@ When `recallTurns` is greater than `0`, the plugin registers the
 file for the current runtime-provided `sessionKey`; it does not accept a
 model-supplied session selector.
 
+Here, `sessionKey` means OpenClaw's stable conversation routing key, not
+necessarily a backend model thread or native runtime session id. For example, a
+Discord channel session may keep the same `sessionKey` across `/new` or
+`/reset` while the underlying model thread/session id changes. In that case,
+`universal_recall` recalls recent turns for the current channel-bound
+conversation key.
+
 Agents can call `universal_recall` during startup to retrieve recent
-request-response turns from the same session. This is best-effort explicit
-recall, not automatic prompt injection. It avoids context-projection and native
-Codex compaction compatibility problems by letting the agent decide when to
-request recent context.
+request-response turns after a session reset, or later when context recovery is
+needed after compaction. This is best-effort explicit recall, not automatic
+prompt injection. It avoids context-projection and native Codex compaction
+compatibility problems by letting the agent decide when to request recent
+context.
 
 Recall file names use a readable sanitized `sessionKey` slug plus a short hash,
 such as

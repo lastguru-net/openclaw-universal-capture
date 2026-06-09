@@ -13,7 +13,7 @@
       },
       "recallFolder": {
         "type": "string",
-        "description": "Workspace-relative folder for per-session NDJSON recall files. Defaults to recall."
+        "description": "Workspace-relative folder for recall NDJSON files, one per sessionKey. Defaults to recall."
       },
       "recallTurns": {
         "type": "integer",
@@ -23,7 +23,7 @@
       "recallMaxBytes": {
         "type": "integer",
         "minimum": 0,
-        "description": "Maximum bytes for a per-session recall file and recall tool output. Defaults to 0 for no size limit. The newest stored turn is always retained."
+        "description": "Maximum bytes for each sessionKey recall file and recall tool output. Defaults to 0 for no size limit. The newest stored turn is always retained."
       },
       "timezone": {
         "type": "string",
@@ -69,7 +69,7 @@
     "recallFolder": {
       "label": "Recall Folder",
       "placeholder": "recall",
-      "help": "Workspace-relative folder for per-session NDJSON recall files."
+      "help": "Workspace-relative folder for recall NDJSON files, one per sessionKey."
     },
     "recallTurns": {
       "label": "Recall Turns",
