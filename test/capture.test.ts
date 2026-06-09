@@ -573,7 +573,10 @@ test("writeRecallEntries writes safe per-session ndjson and prunes by turn count
       recallFolder: config.recallFolder,
       sessionKey,
     })
-    assert.match(recallPath, /recall\/[^/]+\.ndjson$/)
+    assert.match(
+      recallPath,
+      /recall\/agent-home-discord-channel-123456789012345678-[a-f0-9]{12}\.ndjson$/,
+    )
     assert.doesNotMatch(recallPath, /agent:home/)
 
     const parsed = parseRecallLines(await readFile(recallPath, "utf8"))

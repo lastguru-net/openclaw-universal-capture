@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { basename, dirname, resolve } from "node:path"
 
@@ -28,8 +29,18 @@ function asOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined
 }
 
+function sessionKeySlug(sessionKey: string): string {
+  const slug = sessionKey
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+
+  return (slug || "session").slice(0, 180).replace(/-+$/g, "") || "session"
+}
+
 function safeSessionKeyFileName(sessionKey: string): string {
-  return `${Buffer.from(sessionKey, "utf8").toString("base64url")}.ndjson`
+  const hash = createHash("sha256").update(sessionKey).digest("hex").slice(0, 12)
+  return `${sessionKeySlug(sessionKey)}-${hash}.ndjson`
 }
 
 export function resolveRecallFilePath(params: {

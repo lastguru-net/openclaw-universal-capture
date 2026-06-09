@@ -133,8 +133,10 @@ recall, not automatic prompt injection. It avoids context-projection and native
 Codex compaction compatibility problems by letting the agent decide when to
 request recent context.
 
-Recall file names use a safe encoded form of `sessionKey` and are written under
-`recallFolder`. Each NDJSON line stores:
+Recall file names use a readable sanitized `sessionKey` slug plus a short hash,
+such as
+`agent-home-discord-channel-123456789012345678-63b89c15d451.ndjson`, and are
+written under `recallFolder`. Each NDJSON line stores:
 
 ```json
 {
