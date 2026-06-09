@@ -124,9 +124,19 @@ value `heartbeat`.
 ## Recall Tool
 
 When `recallTurns` is greater than `0`, the plugin registers the
-`universal_recall` tool. The tool takes no parameters and reads only the recall
-file for the current runtime-provided `sessionKey`; it does not accept a
-model-supplied session selector.
+`universal_recall` tool. The tool reads only the recall file for the current
+runtime-provided `sessionKey`; it does not accept a model-supplied session
+selector.
+
+The tool accepts one optional parameter:
+
+```json
+{ "maxTurns": 1 }
+```
+
+`maxTurns` limits how many latest request-response turns are returned from the
+stored recall window. Omit it or set it to `0` to return the configured default
+window. Values larger than the configured/stored window are clamped.
 
 Here, `sessionKey` means OpenClaw's stable conversation routing key, not
 necessarily a backend model thread or native runtime session id. For example, a

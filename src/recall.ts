@@ -21,6 +21,10 @@ type RecallReadResult = {
   malformedLines: number
 }
 
+export type UniversalRecallToolParams = {
+  maxTurns?: number
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
@@ -231,6 +235,34 @@ export function renderRecallToolOutput(params: {
   return truncateUtf8(text, budget) + notice
 }
 
+export function resolveRecallToolMaxTurns(params: {
+  rawParams: unknown
+  defaultTurns: number
+}): number {
+  if (params.rawParams === undefined || params.rawParams === null) {
+    return params.defaultTurns
+  }
+  if (!isRecord(params.rawParams)) {
+    throw new Error("universal_recall parameters must be an object.")
+  }
+
+  const allowedKeys = new Set(["maxTurns"])
+  const unknownKeys = Object.keys(params.rawParams).filter((key) => !allowedKeys.has(key))
+  if (unknownKeys.length > 0) {
+    throw new Error(`universal_recall has unknown parameter(s): ${unknownKeys.join(", ")}.`)
+  }
+
+  const rawMaxTurns = params.rawParams.maxTurns
+  if (rawMaxTurns === undefined || rawMaxTurns === 0) {
+    return params.defaultTurns
+  }
+  if (typeof rawMaxTurns !== "number" || !Number.isInteger(rawMaxTurns) || rawMaxTurns < 0) {
+    throw new Error("universal_recall maxTurns must be a non-negative integer.")
+  }
+
+  return Math.min(rawMaxTurns, params.defaultTurns)
+}
+
 export function createUniversalRecallTool(params: {
   config: UniversalCaptureConfig
   context: OpenClawPluginToolContext
@@ -239,9 +271,21 @@ export function createUniversalRecallTool(params: {
     name: "universal_recall",
     label: "Universal Recall",
     description:
-      "Recall recent request-response turns captured for the current OpenClaw sessionKey, such as the current channel-bound conversation.",
-    parameters: {},
-    execute: async () => {
+      "Recall recent request-response turns captured for the current OpenClaw sessionKey, such as the current channel-bound conversation. Optional maxTurns limits how many latest turns to return; 0 or omitted uses the configured default window.",
+    parameters: {
+      type: "object",
+      properties: {
+        maxTurns: {
+          type: "integer",
+          minimum: 0,
+          description:
+            "Maximum number of latest request-response turns to return. Use 0 or omit to return the configured default recall window.",
+        },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+    execute: async (_toolCallId: string, rawParams?: unknown) => {
       const ctx = params.context
       if (!ctx.workspaceDir) {
         return {
@@ -266,13 +310,17 @@ export function createUniversalRecallTool(params: {
         }
       }
 
+      const maxTurns = resolveRecallToolMaxTurns({
+        rawParams,
+        defaultTurns: params.config.recallTurns,
+      })
       const filePath = resolveRecallFilePath({
         workspaceDir: ctx.workspaceDir,
         recallFolder: params.config.recallFolder,
         sessionKey: ctx.sessionKey,
       })
       const recalled = await readRecallFile(filePath)
-      const entries = recalled.entries.slice(-params.config.recallTurns)
+      const entries = maxTurns > 0 ? recalled.entries.slice(-maxTurns) : []
 
       return {
         details: {},

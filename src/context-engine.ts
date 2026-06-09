@@ -2,11 +2,10 @@ import type {
   AgentMessage,
   HarnessContextEngine,
 } from "openclaw/plugin-sdk/agent-harness-runtime"
+import { delegateCompactionToRuntime } from "openclaw/plugin-sdk/core"
 import {
-  delegateCompactionToRuntime,
   type PluginLogger,
-  type CompactResult,
-} from "openclaw/plugin-sdk"
+} from "openclaw/plugin-sdk/plugin-entry"
 
 import {
   appendCaptureEntries,
@@ -19,7 +18,7 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
   readonly info = {
     id: "openclaw-universal-capture",
     name: "OpenClaw Universal Capture",
-    version: "0.5.0",
+    version: "0.6.0",
     ownsCompaction: false,
   } as const
 
@@ -124,7 +123,7 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
 
   async compact(
     params: Parameters<HarnessContextEngine["compact"]>[0],
-  ): Promise<CompactResult> {
+  ): Promise<Awaited<ReturnType<HarnessContextEngine["compact"]>>> {
     return delegateCompactionToRuntime(params)
   }
 }

@@ -15,8 +15,10 @@ import {
 } from "../src/capture.js"
 import { parseConfig } from "../src/config.js"
 import {
+  createUniversalRecallTool,
   parseRecallLines,
   renderRecallToolOutput,
+  resolveRecallToolMaxTurns,
   resolveRecallFilePath,
   writeRecallEntries,
 } from "../src/recall.js"
@@ -708,6 +710,75 @@ test("renderRecallToolOutput truncates output without corrupting utf8", () => {
 
   assert.match(text, /truncated by recallMaxBytes/)
   assert.doesNotMatch(text, /\uFFFD/)
+})
+
+test("resolveRecallToolMaxTurns uses default for omitted or zero and validates input", () => {
+  assert.equal(resolveRecallToolMaxTurns({ rawParams: undefined, defaultTurns: 3 }), 3)
+  assert.equal(resolveRecallToolMaxTurns({ rawParams: {}, defaultTurns: 3 }), 3)
+  assert.equal(resolveRecallToolMaxTurns({ rawParams: { maxTurns: 0 }, defaultTurns: 3 }), 3)
+  assert.equal(resolveRecallToolMaxTurns({ rawParams: { maxTurns: 1 }, defaultTurns: 3 }), 1)
+  assert.equal(resolveRecallToolMaxTurns({ rawParams: { maxTurns: 9 }, defaultTurns: 3 }), 3)
+  assert.throws(
+    () => resolveRecallToolMaxTurns({ rawParams: { maxTurns: -1 }, defaultTurns: 3 }),
+    /non-negative integer/,
+  )
+  assert.throws(
+    () => resolveRecallToolMaxTurns({ rawParams: { maxTurns: 1.5 }, defaultTurns: 3 }),
+    /non-negative integer/,
+  )
+  assert.throws(
+    () => resolveRecallToolMaxTurns({ rawParams: { extra: true }, defaultTurns: 3 }),
+    /unknown parameter/,
+  )
+})
+
+test("createUniversalRecallTool limits output with optional maxTurns", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "universal-capture-recall-tool-"))
+  try {
+    const config = parseConfig({ recallTurns: 3, recallFolder: "recall" })
+    const sessionKey = "agent:home:discord:channel:123456789012345678"
+    const entries = selectCaptureEntries({
+      messages: [
+        user("one", Date.UTC(2026, 5, 1, 10, 0)),
+        assistant("first", Date.UTC(2026, 5, 1, 10, 1)),
+        user("two", Date.UTC(2026, 5, 1, 10, 2)),
+        assistant("second", Date.UTC(2026, 5, 1, 10, 3)),
+        user("three", Date.UTC(2026, 5, 1, 10, 4)),
+        assistant("third", Date.UTC(2026, 5, 1, 10, 5)),
+      ],
+      prePromptMessageCount: 0,
+      timezone: "UTC",
+      rolloverTime: "04:00",
+      skipNoReply: false,
+      includeMessageMetadata: false,
+      stripUntrustedMetadata: true,
+      sessionKey,
+    })
+    await writeRecallEntries({
+      workspaceDir: dir,
+      config,
+      sessionKey,
+      entries,
+    })
+
+    const tool = createUniversalRecallTool({
+      config,
+      context: { workspaceDir: dir, sessionKey } as never,
+    })
+    const latestOnly = await tool.execute("call-1", { maxTurns: 1 })
+    const latestText = latestOnly.content[0]?.text ?? ""
+    assert.doesNotMatch(latestText, /User:\none/)
+    assert.doesNotMatch(latestText, /User:\ntwo/)
+    assert.match(latestText, /User:\nthree/)
+
+    const defaultWindow = await tool.execute("call-2", { maxTurns: 0 })
+    const defaultText = defaultWindow.content[0]?.text ?? ""
+    assert.match(defaultText, /User:\none/)
+    assert.match(defaultText, /User:\ntwo/)
+    assert.match(defaultText, /User:\nthree/)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })
 
 test("appendCaptureEntries creates Conversation file frontmatter", async () => {
