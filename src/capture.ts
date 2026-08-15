@@ -424,30 +424,17 @@ function captureAdvancementKeyHash(advancementKey: string): string {
 
 export function captureAdvancementMarker(
   advancementKey: string,
-  payloadHash: string,
 ): string {
   const keyHash = captureAdvancementKeyHash(advancementKey)
-  return `<!-- openclaw-universal-capture:turn:${keyHash}:${payloadHash} -->\n`
+  return `<!-- openclaw-universal-capture:turn:${keyHash} -->\n`
 }
 
-function findCaptureAdvancementPayloadHash(
+function hasCaptureAdvancementMarker(
   text: string,
   advancementKey: string,
-): string | undefined {
+): boolean {
   const keyHash = captureAdvancementKeyHash(advancementKey)
-  const markerPrefix = `<!-- openclaw-universal-capture:turn:${keyHash}:`
-  const markerStart = text.indexOf(markerPrefix)
-  if (markerStart < 0) return undefined
-
-  const hashStart = markerStart + markerPrefix.length
-  const markerEnd = text.indexOf(" -->", hashStart)
-  const payloadHash = markerEnd < 0 ? "" : text.slice(hashStart, markerEnd)
-  if (!/^[a-f0-9]{64}$/.test(payloadHash)) {
-    throw new Error(
-      `openclaw-universal-capture has malformed advancement marker: ${keyHash}`,
-    )
-  }
-  return payloadHash
+  return text.includes(`<!-- openclaw-universal-capture:turn:${keyHash} -->`)
 }
 
 export async function commitCaptureEntries(params: {
@@ -456,13 +443,9 @@ export async function commitCaptureEntries(params: {
   date: string
   entries: ConversationCaptureEntry[]
   advancementKey: string
-  payloadHash: string
 }): Promise<CaptureCommitResult> {
   if (!params.advancementKey) {
     throw new Error("openclaw-universal-capture advancement key is empty")
-  }
-  if (!/^[a-f0-9]{64}$/.test(params.payloadHash)) {
-    throw new Error("openclaw-universal-capture payload hash is invalid")
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(params.date)) {
     throw new Error("openclaw-universal-capture commit date is invalid")
@@ -478,58 +461,16 @@ export async function commitCaptureEntries(params: {
   return await withFileLock(target.filePath, async () => {
     const existing =
       (await readTextIfExists(target.filePath)) ?? renderInitialFile(target)
-    const committedPayloadHash = findCaptureAdvancementPayloadHash(
-      existing,
-      params.advancementKey,
-    )
-    if (committedPayloadHash) {
-      if (committedPayloadHash !== params.payloadHash) {
-        throw new Error(
-          `openclaw-universal-capture advancement key collision: ${params.advancementKey}`,
-        )
-      }
+    if (hasCaptureAdvancementMarker(existing, params.advancementKey)) {
       return { status: "duplicate", written: 0 }
     }
 
     await atomicWriteText(
       target.filePath,
       existing +
-        captureAdvancementMarker(params.advancementKey, params.payloadHash) +
+        captureAdvancementMarker(params.advancementKey) +
         params.entries.map(renderCaptureEntry).join(""),
     )
     return { status: "committed", written: params.entries.length }
   })
-}
-
-export async function appendCaptureEntries(params: {
-  workspaceDir: string
-  config: Pick<UniversalCaptureConfig, "folder">
-  entries: ConversationCaptureEntry[]
-}): Promise<number> {
-  const grouped = new Map<string, ConversationCaptureEntry[]>()
-  for (const entry of params.entries) {
-    const existing = grouped.get(entry.date)
-    if (existing) existing.push(entry)
-    else grouped.set(entry.date, [entry])
-  }
-
-  let written = 0
-  for (const [date, entries] of grouped) {
-    const target = resolveCaptureFileTarget({
-      workspaceDir: params.workspaceDir,
-      folder: params.config.folder,
-      date,
-    })
-    written += await withFileLock(target.filePath, async () => {
-      const existing =
-        (await readTextIfExists(target.filePath)) ?? renderInitialFile(target)
-
-      await atomicWriteText(
-        target.filePath,
-        existing + entries.map(renderCaptureEntry).join(""),
-      )
-      return entries.length
-    })
-  }
-  return written
 }

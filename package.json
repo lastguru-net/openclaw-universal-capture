@@ -38,7 +38,7 @@
     "url": "https://github.com/lastguru-net/openclaw-universal-capture"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.8.1-beta.2 <2026.9.0-0"
+    "openclaw": ">=2026.8.1-beta.2"
   },
   "devDependencies": {
     "@types/node": "^24.12.4",
@@ -53,7 +53,7 @@
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.8.1-beta.2 <2026.9.0-0"
+      "pluginApi": ">=2026.8.1-beta.2"
     },
     "install": {
       "minHostVersion": ">=2026.8.1-beta.2"

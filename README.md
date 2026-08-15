@@ -20,13 +20,6 @@ The plugin is intentionally narrow:
 - returns stable `thread_bootstrap` context projection metadata so native Codex
   threads can resume without lossy per-turn OpenClaw history projection
 
-Version 0.7.0 supports the OpenClaw 2026.8 release line starting with
-2026.8.1-beta.2. Older plugin versions do not implement the durable
-context-engine turn contract introduced by that host release; future 2026.9
-hosts are not claimed compatible until tested. Its Node.js requirement matches
-the supported host runtime floor: Node 22.22.3+, 24.15.0+, or 25.9.0+ within
-the corresponding major release.
-
 ## Privacy and Retention Warning
 
 This plugin persistently stores completed user/assistant conversations in
@@ -185,9 +178,9 @@ temporary file, and then renames it into place.
 
 The `advancementKey` is supplied by OpenClaw and is used only to make retries
 idempotent. Markdown is the canonical commit record: each accepted turn is
-written atomically with a hidden HTML marker containing hashes of the
-advancement key and accepted payload. Recall NDJSON is a bounded derived
-projection; a host retry repairs it when Markdown committed before recall.
+written atomically with a hidden HTML marker containing a hash of the
+advancement key. Recall NDJSON is a bounded derived projection; a host retry
+repairs it when Markdown committed before recall.
 
 ## Output
 

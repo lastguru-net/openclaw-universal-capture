@@ -7,7 +7,6 @@ import test from "node:test"
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime"
 
 import {
-  appendCaptureEntries,
   extractMessageText,
   resolveCaptureFileTarget,
   selectCaptureEntries as selectCaptureEntriesBase,
@@ -778,48 +777,5 @@ test("createUniversalRecallTool limits output with optional maxTurns", async () 
     assert.match(defaultText, /User:\nthree/)
   } finally {
     await rm(dir, { recursive: true, force: true })
-  }
-})
-
-test("appendCaptureEntries creates Conversation file frontmatter", async () => {
-  const workspaceDir = await mkdtemp(join(tmpdir(), "ouc-"))
-  try {
-    await appendCaptureEntries({
-      workspaceDir,
-      config: { folder: "conversations" },
-      entries: [
-        {
-          date: "2026-06-01",
-          time: "10:05",
-          timestamp: "2026-06-01T10:05:00.000Z",
-          metadata: {
-            agent: "home",
-            surface: "discord",
-            channel: "channel:123456789012345678",
-            senderUsername: "operator",
-          },
-          userText: "new request",
-          assistantText: "final reply",
-        },
-      ],
-    })
-
-    const target = resolveCaptureFileTarget({
-      workspaceDir,
-      folder: "conversations",
-      date: "2026-06-01",
-    })
-    const content = await readFile(target.filePath, "utf8")
-    assert.match(content, /type: Conversation/)
-    assert.match(
-      content,
-      /permalink: conversations\/conversations-2026-06-01/,
-    )
-    assert.match(content, /# Conversations 2026-06-01/)
-    assert.match(content, /### 10:05\nAgent: home\nSurface: discord\nChannel: channel:123456789012345678\nSender: operator/)
-    assert.match(content, /\*\*User:\*\*\nnew request/)
-    assert.match(content, /\*\*Assistant:\*\*\nfinal reply/)
-  } finally {
-    await rm(workspaceDir, { recursive: true, force: true })
   }
 })

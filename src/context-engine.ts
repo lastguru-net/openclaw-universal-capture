@@ -3,28 +3,22 @@ import type {
   HarnessContextEngine,
 } from "openclaw/plugin-sdk/agent-harness-runtime"
 import { delegateCompactionToRuntime } from "openclaw/plugin-sdk/core"
-import {
-  type PluginLogger,
-} from "openclaw/plugin-sdk/plugin-entry"
+import { type PluginLogger } from "openclaw/plugin-sdk/plugin-entry"
 
 import {
+  commitCaptureEntries,
   resolveTurnCaptureDate,
   selectCaptureEntries,
 } from "./capture.js"
-import { commitCaptureTurn } from "./commit.js"
 import type { UniversalCaptureConfig } from "./config.js"
+import { writeRecallEntries } from "./recall.js"
 
 export class UniversalCaptureContextEngine implements HarnessContextEngine {
   readonly info = {
     id: "openclaw-universal-capture",
     name: "OpenClaw Universal Capture",
     version: "0.7.0",
-    acceptedHostParams: [
-      "sessionKey",
-      "sessionTarget",
-      "runtimeSettings",
-      "runtimeContext",
-    ] as string[],
+    acceptedHostParams: ["sessionKey"] as string[],
     transcriptSemantics: {
       currentTurnFence: "before-current-turn-entry-v1",
       turnAdvancementIdempotency: "atomic-idempotent-v1",
@@ -77,16 +71,6 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
     params: Parameters<NonNullable<HarnessContextEngine["commitTurn"]>>[0],
   ): Promise<{ status: "committed" | "duplicate" }> {
     const workspaceDir = this.requireWorkspaceDir()
-    if (params.sessionKey && params.sessionKey !== params.admission.sessionKey) {
-      throw new Error(
-        "openclaw-universal-capture commit sessionKey does not match the admitted turn",
-      )
-    }
-    if (params.sessionId !== params.admission.sessionId) {
-      throw new Error(
-        "openclaw-universal-capture commit sessionId does not match the admitted turn",
-      )
-    }
     const sessionKey = params.admission.sessionKey
     const entries = selectCaptureEntries({
       messages: params.messages,
@@ -102,40 +86,39 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
       sessionKey,
     })
 
-    const result = await commitCaptureTurn({
-      advancementKey: params.advancementKey,
-      payload: {
-        schemaVersion: 1,
-        boundary: {
-          admissionEntryId: params.admission.entryId,
-          terminalEntryId: params.terminal.entryId,
-        },
-        sessionId: params.sessionId,
-        sessionKey,
-        workspaceDir,
-        commitDate: resolveTurnCaptureDate({
-          messages: params.messages,
-          timezone: this.params.config.timezone,
-          rolloverTime: this.params.config.rolloverTime,
-        }),
-        entries,
-        projection: {
-          folder: this.params.config.folder,
-          recallFolder: this.params.config.recallFolder,
-          recallTurns: this.params.config.recallTurns,
-          recallMaxBytes: this.params.config.recallMaxBytes,
-        },
-      },
+    const date = resolveTurnCaptureDate({
+      messages: params.messages,
+      timezone: this.params.config.timezone,
+      rolloverTime: this.params.config.rolloverTime,
     })
-    if (result.malformedRecallLines > 0) {
+    const capture = await commitCaptureEntries({
+      advancementKey: params.advancementKey,
+      workspaceDir,
+      config: this.params.config,
+      date,
+      entries,
+    })
+
+    const recall =
+      this.params.config.recallTurns > 0 && entries.length > 0
+        ? await writeRecallEntries({
+            workspaceDir,
+            config: this.params.config,
+            sessionId: params.sessionId,
+            sessionKey,
+            entries,
+            advancementKey: params.advancementKey,
+          })
+        : { written: 0, malformedLines: 0 }
+    if (recall.malformedLines > 0) {
       this.params.logger?.warn(
-        `openclaw-universal-capture ignored ${result.malformedRecallLines} malformed recall line${result.malformedRecallLines === 1 ? "" : "s"}`,
+        `openclaw-universal-capture ignored ${recall.malformedLines} malformed recall line${recall.malformedLines === 1 ? "" : "s"}`,
       )
     }
     this.params.logger?.debug?.(
-      `openclaw-universal-capture ${result.status} turn ${params.advancementKey}; appended ${result.captureWritten} conversation entr${result.captureWritten === 1 ? "y" : "ies"} and ${result.recallWritten} recall entr${result.recallWritten === 1 ? "y" : "ies"}`,
+      `openclaw-universal-capture ${capture.status}; appended ${capture.written} conversation entr${capture.written === 1 ? "y" : "ies"} and ${recall.written} recall entr${recall.written === 1 ? "y" : "ies"}`,
     )
-    return { status: result.status }
+    return { status: capture.status }
   }
 
   async compact(
