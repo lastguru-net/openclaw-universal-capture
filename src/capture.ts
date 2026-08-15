@@ -1,8 +1,9 @@
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises"
-import { basename, dirname, resolve } from "node:path"
+import { createHash } from "node:crypto"
+import { basename, resolve } from "node:path"
 
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime"
 
+import { atomicWriteText, readTextIfExists, withFileLock } from "./atomic-file.js"
 import type { CaptureFilter, UniversalCaptureConfig } from "./config.js"
 
 export type ConversationCaptureEntry = {
@@ -400,21 +401,16 @@ function renderMetadataLines(
   return lines
 }
 
-async function ensureCaptureFile(target: CaptureFileTarget): Promise<void> {
-  await mkdir(dirname(target.filePath), { recursive: true })
-  try {
-    await readFile(target.filePath, "utf8")
-  } catch (error) {
-    const code = asRecord(error)?.code
-    if (code !== "ENOENT") throw error
-    await writeFile(target.filePath, renderInitialFile(target), "utf8")
-  }
+export function captureAdvancementMarker(advancementKey: string): string {
+  const keyHash = createHash("sha256").update(advancementKey).digest("hex")
+  return `<!-- openclaw-universal-capture:turn:${keyHash} -->\n`
 }
 
 export async function appendCaptureEntries(params: {
   workspaceDir: string
-  config: UniversalCaptureConfig
+  config: Pick<UniversalCaptureConfig, "folder">
   entries: ConversationCaptureEntry[]
+  advancementKey?: string
 }): Promise<number> {
   const grouped = new Map<string, ConversationCaptureEntry[]>()
   for (const entry of params.entries) {
@@ -430,9 +426,20 @@ export async function appendCaptureEntries(params: {
       folder: params.config.folder,
       date,
     })
-    await ensureCaptureFile(target)
-    await appendFile(target.filePath, entries.map(renderCaptureEntry).join(""), "utf8")
-    written += entries.length
+    written += await withFileLock(target.filePath, async () => {
+      const existing =
+        (await readTextIfExists(target.filePath)) ?? renderInitialFile(target)
+      const marker = params.advancementKey
+        ? captureAdvancementMarker(params.advancementKey)
+        : ""
+      if (marker && existing.includes(marker)) return 0
+
+      await atomicWriteText(
+        target.filePath,
+        existing + marker + entries.map(renderCaptureEntry).join(""),
+      )
+      return entries.length
+    })
   }
   return written
 }

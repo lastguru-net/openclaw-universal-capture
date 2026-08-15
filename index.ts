@@ -24,6 +24,7 @@ export default definePluginEntry({
       (ctx) =>
         new UniversalCaptureContextEngine({
           config,
+          agentDir: ctx.agentDir,
           workspaceDir: ctx.workspaceDir,
           logger: api.logger,
         }),

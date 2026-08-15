@@ -1,3 +1,5 @@
+import { resolve } from "node:path"
+
 import type {
   AgentMessage,
   HarnessContextEngine,
@@ -8,29 +10,44 @@ import {
 } from "openclaw/plugin-sdk/plugin-entry"
 
 import {
-  appendCaptureEntries,
   selectCaptureEntries,
 } from "./capture.js"
+import { CaptureCommitJournal } from "./commit-journal.js"
+import { commitCaptureTurn } from "./commit.js"
 import type { UniversalCaptureConfig } from "./config.js"
-import { writeRecallEntries } from "./recall.js"
 
 export class UniversalCaptureContextEngine implements HarnessContextEngine {
   readonly info = {
     id: "openclaw-universal-capture",
     name: "OpenClaw Universal Capture",
-    version: "0.6.0",
+    version: "0.7.0",
+    acceptedHostParams: [
+      "sessionKey",
+      "sessionTarget",
+      "runtimeSettings",
+      "runtimeContext",
+    ] as string[],
+    transcriptSemantics: {
+      currentTurnFence: "before-current-turn-entry-v1",
+      turnAdvancementIdempotency: "atomic-idempotent-v1",
+    },
     ownsCompaction: false,
   } as const
+
+  private commitJournal: CaptureCommitJournal | undefined
 
   constructor(
     private readonly params: {
       config: UniversalCaptureConfig
+      agentDir?: string
       workspaceDir?: string
       logger?: PluginLogger
     },
   ) {}
 
   async bootstrap(): Promise<{ bootstrapped: boolean; reason?: string }> {
+    this.requireWorkspaceDir()
+    this.getCommitJournal()
     return { bootstrapped: true }
   }
 
@@ -62,23 +79,24 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
     }
   }
 
-  async afterTurn(params: {
-    sessionId: string
-    sessionKey?: string
-    messages: AgentMessage[]
-    prePromptMessageCount: number
-  }): Promise<void> {
-    const workspaceDir = this.params.workspaceDir
-    if (!workspaceDir) {
-      this.params.logger?.warn(
-        "openclaw-universal-capture skipped afterTurn because workspaceDir is unavailable",
+  async commitTurn(
+    params: Parameters<NonNullable<HarnessContextEngine["commitTurn"]>>[0],
+  ): Promise<{ status: "committed" | "duplicate" }> {
+    const workspaceDir = this.requireWorkspaceDir()
+    if (params.sessionKey && params.sessionKey !== params.admission.sessionKey) {
+      throw new Error(
+        "openclaw-universal-capture commit sessionKey does not match the admitted turn",
       )
-      return
     }
-
+    if (params.sessionId !== params.admission.sessionId) {
+      throw new Error(
+        "openclaw-universal-capture commit sessionId does not match the admitted turn",
+      )
+    }
+    const sessionKey = params.admission.sessionKey
     const entries = selectCaptureEntries({
       messages: params.messages,
-      prePromptMessageCount: params.prePromptMessageCount,
+      prePromptMessageCount: 0,
       timezone: this.params.config.timezone,
       rolloverTime: this.params.config.rolloverTime,
       skipNoReply: this.params.config.skipNoReply,
@@ -87,43 +105,68 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
       agents: this.params.config.agents,
       surfaces: this.params.config.surfaces,
       channels: this.params.config.channels,
-      sessionKey: params.sessionKey,
+      sessionKey,
     })
-    if (entries.length === 0) return
 
-    const written = await appendCaptureEntries({
-      workspaceDir,
-      config: this.params.config,
-      entries,
+    const result = await commitCaptureTurn({
+      advancementKey: params.advancementKey,
+      journal: this.getCommitJournal(),
+      payload: {
+        schemaVersion: 1,
+        boundary: {
+          admissionEntryId: params.admission.entryId,
+          terminalEntryId: params.terminal.entryId,
+        },
+        sessionId: params.sessionId,
+        sessionKey,
+        workspaceDir,
+        entries,
+        projection: {
+          folder: this.params.config.folder,
+          recallFolder: this.params.config.recallFolder,
+          recallTurns: this.params.config.recallTurns,
+          recallMaxBytes: this.params.config.recallMaxBytes,
+        },
+      },
     })
-    if (this.params.config.recallTurns > 0 && params.sessionKey) {
-      try {
-        const recall = await writeRecallEntries({
-          workspaceDir,
-          config: this.params.config,
-          sessionId: params.sessionId,
-          sessionKey: params.sessionKey,
-          entries,
-        })
-        if (recall.malformedLines > 0) {
-          this.params.logger?.warn(
-            `openclaw-universal-capture ignored ${recall.malformedLines} malformed recall line${recall.malformedLines === 1 ? "" : "s"}`,
-          )
-        }
-      } catch (error) {
-        this.params.logger?.warn(
-          `openclaw-universal-capture skipped recall write: ${error instanceof Error ? error.message : String(error)}`,
-        )
-      }
+    if (result.malformedRecallLines > 0) {
+      this.params.logger?.warn(
+        `openclaw-universal-capture ignored ${result.malformedRecallLines} malformed recall line${result.malformedRecallLines === 1 ? "" : "s"}`,
+      )
     }
     this.params.logger?.debug?.(
-      `openclaw-universal-capture appended ${written} conversation entr${written === 1 ? "y" : "ies"}`,
+      `openclaw-universal-capture ${result.status} turn ${params.advancementKey}; appended ${result.captureWritten} conversation entr${result.captureWritten === 1 ? "y" : "ies"} and ${result.recallWritten} recall entr${result.recallWritten === 1 ? "y" : "ies"}`,
     )
+    return { status: result.status }
   }
 
   async compact(
     params: Parameters<HarnessContextEngine["compact"]>[0],
   ): Promise<Awaited<ReturnType<HarnessContextEngine["compact"]>>> {
     return delegateCompactionToRuntime(params)
+  }
+
+  async dispose(): Promise<void> {
+    this.commitJournal?.close()
+    this.commitJournal = undefined
+  }
+
+  private requireWorkspaceDir(): string {
+    if (!this.params.workspaceDir) {
+      throw new Error(
+        "openclaw-universal-capture requires workspaceDir for durable capture",
+      )
+    }
+    return this.params.workspaceDir
+  }
+
+  private getCommitJournal(): CaptureCommitJournal {
+    if (this.commitJournal) return this.commitJournal
+
+    const stateDir = this.params.agentDir
+      ? resolve(this.params.agentDir, "plugins", "openclaw-universal-capture")
+      : resolve(this.requireWorkspaceDir(), ".openclaw-universal-capture")
+    this.commitJournal = new CaptureCommitJournal(stateDir)
+    return this.commitJournal
   }
 }

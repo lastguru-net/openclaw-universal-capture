@@ -786,20 +786,7 @@ test("appendCaptureEntries creates Conversation file frontmatter", async () => {
   try {
     await appendCaptureEntries({
       workspaceDir,
-      config: {
-        folder: "conversations",
-        recallFolder: "recall",
-        recallTurns: 0,
-        recallMaxBytes: 0,
-        timezone: "UTC",
-        rolloverTime: "04:00",
-        skipNoReply: false,
-        includeMessageMetadata: true,
-        stripUntrustedMetadata: true,
-        agents: { mode: "all", values: new Set<string>() },
-        surfaces: { mode: "all", values: new Set<string>() },
-        channels: { mode: "all", values: new Set<string>() },
-      },
+      config: { folder: "conversations" },
       entries: [
         {
           date: "2026-06-01",

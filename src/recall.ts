@@ -1,13 +1,15 @@
 import { createHash } from "node:crypto"
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
-import { basename, dirname, resolve } from "node:path"
+import { readFile } from "node:fs/promises"
+import { resolve } from "node:path"
 
-import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-runtime"
+import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-entry"
 
+import { atomicWriteText, withFileLock } from "./atomic-file.js"
 import type { ConversationCaptureEntry } from "./capture.js"
 import type { UniversalCaptureConfig } from "./config.js"
 
 export type RecallEntry = {
+  advancementKey?: string
   timestamp: string
   sessionId?: string
   sessionKey: string
@@ -71,6 +73,9 @@ function parseRecallEntry(value: unknown): RecallEntry | undefined {
   }
 
   return {
+    ...(asOptionalString(value.advancementKey)
+      ? { advancementKey: asOptionalString(value.advancementKey) }
+      : {}),
     timestamp,
     ...(asOptionalString(value.sessionId) ? { sessionId: asOptionalString(value.sessionId) } : {}),
     sessionKey,
@@ -136,10 +141,14 @@ function pruneRecallEntries(params: {
 
 export async function writeRecallEntries(params: {
   workspaceDir: string
-  config: UniversalCaptureConfig
+  config: Pick<
+    UniversalCaptureConfig,
+    "recallFolder" | "recallTurns" | "recallMaxBytes"
+  >
   sessionId?: string
   sessionKey: string
   entries: ConversationCaptureEntry[]
+  advancementKey?: string
 }): Promise<{ written: number; malformedLines: number }> {
   if (params.config.recallTurns <= 0 || params.entries.length === 0) {
     return { written: 0, malformedLines: 0 }
@@ -150,37 +159,37 @@ export async function writeRecallEntries(params: {
     recallFolder: params.config.recallFolder,
     sessionKey: params.sessionKey,
   })
-  const existing = await readRecallFile(filePath)
-  const nextEntries = pruneRecallEntries({
-    entries: [
-      ...existing.entries,
-      ...params.entries.map((entry) => ({
-        timestamp: entry.timestamp,
-        ...(params.sessionId ? { sessionId: params.sessionId } : {}),
-        sessionKey: params.sessionKey,
-        ...(entry.senderUsername ? { senderUsername: entry.senderUsername } : {}),
-        userText: entry.userText,
-        assistantText: entry.assistantText,
-      })),
-    ],
-    recallTurns: params.config.recallTurns,
-    recallMaxBytes: params.config.recallMaxBytes,
+  return await withFileLock(filePath, async () => {
+    const existing = await readRecallFile(filePath)
+    if (
+      params.advancementKey &&
+      existing.entries.some((entry) => entry.advancementKey === params.advancementKey)
+    ) {
+      return { written: 0, malformedLines: existing.malformedLines }
+    }
+
+    const nextEntries = pruneRecallEntries({
+      entries: [
+        ...existing.entries,
+        ...params.entries.map((entry) => ({
+          ...(params.advancementKey
+            ? { advancementKey: params.advancementKey }
+            : {}),
+          timestamp: entry.timestamp,
+          ...(params.sessionId ? { sessionId: params.sessionId } : {}),
+          sessionKey: params.sessionKey,
+          ...(entry.senderUsername ? { senderUsername: entry.senderUsername } : {}),
+          userText: entry.userText,
+          assistantText: entry.assistantText,
+        })),
+      ],
+      recallTurns: params.config.recallTurns,
+      recallMaxBytes: params.config.recallMaxBytes,
+    })
+
+    await atomicWriteText(filePath, serializeEntries(nextEntries))
+    return { written: params.entries.length, malformedLines: existing.malformedLines }
   })
-
-  await mkdir(dirname(filePath), { recursive: true })
-  const tmpPath = resolve(
-    dirname(filePath),
-    `.${basename(filePath)}.${process.pid}.${Date.now()}.tmp`,
-  )
-  try {
-    await writeFile(tmpPath, serializeEntries(nextEntries), "utf8")
-    await rename(tmpPath, filePath)
-  } catch (error) {
-    await rm(tmpPath, { force: true }).catch(() => undefined)
-    throw error
-  }
-
-  return { written: params.entries.length, malformedLines: existing.malformedLines }
 }
 
 function truncateUtf8(text: string, maxBytes: number): string {
