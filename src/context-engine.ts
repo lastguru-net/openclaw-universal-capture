@@ -1,5 +1,3 @@
-import { resolve } from "node:path"
-
 import type {
   AgentMessage,
   HarnessContextEngine,
@@ -10,9 +8,9 @@ import {
 } from "openclaw/plugin-sdk/plugin-entry"
 
 import {
+  resolveTurnCaptureDate,
   selectCaptureEntries,
 } from "./capture.js"
-import { CaptureCommitJournal } from "./commit-journal.js"
 import { commitCaptureTurn } from "./commit.js"
 import type { UniversalCaptureConfig } from "./config.js"
 
@@ -34,12 +32,9 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
     ownsCompaction: false,
   } as const
 
-  private commitJournal: CaptureCommitJournal | undefined
-
   constructor(
     private readonly params: {
       config: UniversalCaptureConfig
-      agentDir?: string
       workspaceDir?: string
       logger?: PluginLogger
     },
@@ -47,7 +42,6 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
 
   async bootstrap(): Promise<{ bootstrapped: boolean; reason?: string }> {
     this.requireWorkspaceDir()
-    this.getCommitJournal()
     return { bootstrapped: true }
   }
 
@@ -110,7 +104,6 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
 
     const result = await commitCaptureTurn({
       advancementKey: params.advancementKey,
-      journal: this.getCommitJournal(),
       payload: {
         schemaVersion: 1,
         boundary: {
@@ -120,6 +113,11 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
         sessionId: params.sessionId,
         sessionKey,
         workspaceDir,
+        commitDate: resolveTurnCaptureDate({
+          messages: params.messages,
+          timezone: this.params.config.timezone,
+          rolloverTime: this.params.config.rolloverTime,
+        }),
         entries,
         projection: {
           folder: this.params.config.folder,
@@ -146,11 +144,6 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
     return delegateCompactionToRuntime(params)
   }
 
-  async dispose(): Promise<void> {
-    this.commitJournal?.close()
-    this.commitJournal = undefined
-  }
-
   private requireWorkspaceDir(): string {
     if (!this.params.workspaceDir) {
       throw new Error(
@@ -158,15 +151,5 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
       )
     }
     return this.params.workspaceDir
-  }
-
-  private getCommitJournal(): CaptureCommitJournal {
-    if (this.commitJournal) return this.commitJournal
-
-    const stateDir = this.params.agentDir
-      ? resolve(this.params.agentDir, "plugins", "openclaw-universal-capture")
-      : resolve(this.requireWorkspaceDir(), ".openclaw-universal-capture")
-    this.commitJournal = new CaptureCommitJournal(stateDir)
-    return this.commitJournal
   }
 }

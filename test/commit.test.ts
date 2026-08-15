@@ -7,14 +7,14 @@ import test from "node:test"
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime"
 
 import {
-  appendCaptureEntries,
+  commitCaptureEntries,
   type ConversationCaptureEntry,
 } from "../src/capture.js"
 import {
-  CaptureCommitJournal,
+  commitCaptureTurn,
+  hashCommitIdentity,
   type CaptureTurnCommitPayload,
-} from "../src/commit-journal.js"
-import { commitCaptureTurn } from "../src/commit.js"
+} from "../src/commit.js"
 import { UniversalCaptureContextEngine } from "../src/context-engine.js"
 import { parseConfig } from "../src/config.js"
 import {
@@ -23,11 +23,15 @@ import {
   writeRecallEntries,
 } from "../src/recall.js"
 
-function entry(userText = "question", assistantText = "answer"): ConversationCaptureEntry {
+function entry(
+  userText = "question",
+  assistantText = "answer",
+  date = "2026-06-01",
+): ConversationCaptureEntry {
   return {
-    date: "2026-06-01",
+    date,
     time: "10:05",
-    timestamp: "2026-06-01T10:05:00.000Z",
+    timestamp: `${date}T10:05:00.000Z`,
     userText,
     assistantText,
   }
@@ -46,6 +50,7 @@ function payload(
     sessionId: "session-1",
     sessionKey: "agent:home:discord:channel:123",
     workspaceDir,
+    commitDate: "2026-06-01",
     entries: [entry()],
     projection: {
       folder: "conversations",
@@ -61,54 +66,78 @@ function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1
 }
 
-test("CaptureCommitJournal atomically deduplicates keys and rejects collisions", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ouc-journal-"))
-  const journal = new CaptureCommitJournal(join(root, "state"))
+test("Markdown is the atomic idempotency record and rejects key collisions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ouc-markdown-commit-"))
+  const first = payload(root)
   try {
-    assert.throws(() => journal.begin("", payload(root)), /advancement key is empty/)
+    await assert.rejects(
+      commitCaptureEntries({
+        workspaceDir: root,
+        config: first.projection,
+        date: first.commitDate,
+        entries: first.entries,
+        advancementKey: "",
+        payloadHash: hashCommitIdentity(first),
+      }),
+      /advancement key is empty/,
+    )
 
-    const first = journal.begin("turn-1", payload(root))
-    assert.equal(first.duplicate, false)
-    assert.equal(first.projected, false)
+    const committed = await commitCaptureEntries({
+      workspaceDir: root,
+      config: first.projection,
+      date: first.commitDate,
+      entries: first.entries,
+      advancementKey: "turn-1",
+      payloadHash: hashCommitIdentity(first),
+    })
+    const duplicate = await commitCaptureEntries({
+      workspaceDir: root,
+      config: first.projection,
+      date: first.commitDate,
+      entries: first.entries,
+      advancementKey: "turn-1",
+      payloadHash: hashCommitIdentity(first),
+    })
 
-    const pendingRetry = journal.begin("turn-1", payload(root))
-    assert.equal(pendingRetry.duplicate, true)
-    assert.equal(pendingRetry.projected, false)
+    assert.deepEqual(committed, { status: "committed", written: 1 })
+    assert.deepEqual(duplicate, { status: "duplicate", written: 0 })
 
-    assert.throws(
-      () =>
-        journal.begin(
-          "turn-1",
-          payload(root, {
-            entries: [entry("different question", "different answer")],
-          }),
-        ),
+    const collision = payload(root, {
+      entries: [entry("different question", "different answer")],
+    })
+    await assert.rejects(
+      commitCaptureEntries({
+        workspaceDir: root,
+        config: collision.projection,
+        date: collision.commitDate,
+        entries: collision.entries,
+        advancementKey: "turn-1",
+        payloadHash: hashCommitIdentity(collision),
+      }),
       /advancement key collision/,
     )
 
-    journal.complete("turn-1")
-    const completedRetry = journal.begin("turn-1", payload(root))
-    assert.equal(completedRetry.duplicate, true)
-    assert.equal(completedRetry.projected, true)
+    const markdown = await readFile(
+      join(root, "conversations", "conversations-2026-06-01.md"),
+      "utf8",
+    )
+    assert.equal(countOccurrences(markdown, "openclaw-universal-capture:turn:"), 1)
+    assert.equal(countOccurrences(markdown, "**Assistant:**"), 1)
   } finally {
-    journal.close()
     await rm(root, { recursive: true, force: true })
   }
 })
 
 test("commitCaptureTurn writes each accepted turn exactly once", async () => {
   const root = await mkdtemp(join(tmpdir(), "ouc-commit-"))
-  const journal = new CaptureCommitJournal(join(root, "state"))
   const turn = payload(root)
   try {
     const first = await commitCaptureTurn({
       advancementKey: "turn-1",
-      journal,
       payload: turn,
     })
     const duplicate = await commitCaptureTurn({
       advancementKey: "turn-1",
-      journal,
       payload: turn,
     })
 
@@ -144,23 +173,48 @@ test("commitCaptureTurn writes each accepted turn exactly once", async () => {
     assert.equal(recall.entries.length, 1)
     assert.equal(recall.entries[0]?.advancementKey, "turn-1")
   } finally {
-    journal.close()
     await rm(root, { recursive: true, force: true })
   }
 })
 
-test("retry repairs a crash between Markdown and recall projection", async () => {
+test("filtered turns use marker-only Markdown commits for durable retries", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ouc-empty-commit-"))
+  const turn = payload(root, { entries: [] })
+  try {
+    const first = await commitCaptureTurn({
+      advancementKey: "turn-1",
+      payload: turn,
+    })
+    const duplicate = await commitCaptureTurn({
+      advancementKey: "turn-1",
+      payload: turn,
+    })
+    assert.equal(first.status, "committed")
+    assert.equal(duplicate.status, "duplicate")
+    assert.equal(first.captureWritten, 0)
+    assert.equal(duplicate.captureWritten, 0)
+
+    const markdown = await readFile(
+      join(root, "conversations", "conversations-2026-06-01.md"),
+      "utf8",
+    )
+    assert.equal(countOccurrences(markdown, "openclaw-universal-capture:turn:"), 1)
+    assert.equal(countOccurrences(markdown, "**Assistant:**"), 0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("retry repairs recall after Markdown was committed", async () => {
   const root = await mkdtemp(join(tmpdir(), "ouc-repair-"))
-  const journal = new CaptureCommitJournal(join(root, "state"))
-  const original = payload(root)
+  const turn = payload(root)
   try {
     await assert.rejects(
       commitCaptureTurn({
         advancementKey: "turn-1",
-        journal,
-        payload: original,
+        payload: turn,
         operations: {
-          appendCaptureEntries,
+          commitCaptureEntries,
           writeRecallEntries: async () => {
             throw new Error("simulated recall failure")
           },
@@ -169,75 +223,59 @@ test("retry repairs a crash between Markdown and recall projection", async () =>
       /simulated recall failure/,
     )
 
-    const changedConfigRetry = payload(root, {
-      projection: {
-        ...original.projection,
-        folder: "wrong-new-folder",
-        recallFolder: "wrong-new-recall",
-      },
-    })
     const repaired = await commitCaptureTurn({
       advancementKey: "turn-1",
-      journal,
-      payload: changedConfigRetry,
+      payload: turn,
     })
-    assert.equal(repaired.status, "duplicate")
-    assert.equal(repaired.captureWritten, 0)
-    assert.equal(repaired.recallWritten, 1)
+    assert.deepEqual(repaired, {
+      status: "duplicate",
+      captureWritten: 0,
+      recallWritten: 1,
+      malformedRecallLines: 0,
+    })
 
     const markdown = await readFile(
       join(root, "conversations", "conversations-2026-06-01.md"),
       "utf8",
     )
     assert.equal(countOccurrences(markdown, "**Assistant:**"), 1)
-    await assert.rejects(
-      readFile(
-        join(root, "wrong-new-folder", "conversations-2026-06-01.md"),
-        "utf8",
-      ),
-      /ENOENT/,
-    )
     const recall = parseRecallLines(
       await readFile(
         resolveRecallFilePath({
           workspaceDir: root,
           recallFolder: "recall",
-          sessionKey: original.sessionKey,
+          sessionKey: turn.sessionKey,
         }),
         "utf8",
       ),
     )
     assert.equal(recall.entries.length, 1)
   } finally {
-    journal.close()
     await rm(root, { recursive: true, force: true })
   }
 })
 
-test("retry recognizes projections completed before the journal completion flag", async () => {
+test("retry recognizes both files written before acknowledgement", async () => {
   const root = await mkdtemp(join(tmpdir(), "ouc-reconcile-"))
-  const journal = new CaptureCommitJournal(join(root, "state"))
   const turn = payload(root)
   try {
-    journal.begin("turn-1", turn)
-    await appendCaptureEntries({
-      workspaceDir: root,
-      config: { folder: turn.projection.folder },
-      entries: turn.entries,
-      advancementKey: "turn-1",
-    })
-    await writeRecallEntries({
-      workspaceDir: root,
-      config: turn.projection,
-      sessionId: turn.sessionId,
-      sessionKey: turn.sessionKey,
-      entries: turn.entries,
-      advancementKey: "turn-1",
-    })
+    await assert.rejects(
+      commitCaptureTurn({
+        advancementKey: "turn-1",
+        payload: turn,
+        operations: {
+          commitCaptureEntries,
+          writeRecallEntries: async (params) => {
+            await writeRecallEntries(params)
+            throw new Error("simulated acknowledgement failure")
+          },
+        },
+      }),
+      /simulated acknowledgement failure/,
+    )
 
     const repaired = await commitCaptureTurn({
       advancementKey: "turn-1",
-      journal,
       payload: turn,
     })
     assert.deepEqual(repaired, {
@@ -247,14 +285,46 @@ test("retry recognizes projections completed before the journal completion flag"
       malformedRecallLines: 0,
     })
   } finally {
-    journal.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("one logical turn crossing rollover is committed to one Markdown file", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ouc-cross-rollover-"))
+  const turn = payload(root, {
+    commitDate: "2026-06-02",
+    entries: [
+      entry("before", "first", "2026-06-01"),
+      entry("after", "second", "2026-06-02"),
+    ],
+  })
+  try {
+    const result = await commitCaptureTurn({
+      advancementKey: "turn-1",
+      payload: turn,
+    })
+    assert.equal(result.status, "committed")
+
+    await assert.rejects(
+      readFile(
+        join(root, "conversations", "conversations-2026-06-01.md"),
+        "utf8",
+      ),
+      /ENOENT/,
+    )
+    const markdown = await readFile(
+      join(root, "conversations", "conversations-2026-06-02.md"),
+      "utf8",
+    )
+    assert.equal(countOccurrences(markdown, "openclaw-universal-capture:turn:"), 1)
+    assert.equal(countOccurrences(markdown, "**Assistant:**"), 2)
+  } finally {
     await rm(root, { recursive: true, force: true })
   }
 })
 
 test("concurrent accepted turns do not lose either file projection", async () => {
   const root = await mkdtemp(join(tmpdir(), "ouc-concurrent-"))
-  const journal = new CaptureCommitJournal(join(root, "state"))
   const first = payload(root)
   const second = payload(root, {
     boundary: {
@@ -265,16 +335,8 @@ test("concurrent accepted turns do not lose either file projection", async () =>
   })
   try {
     await Promise.all([
-      commitCaptureTurn({
-        advancementKey: "turn-1",
-        journal,
-        payload: first,
-      }),
-      commitCaptureTurn({
-        advancementKey: "turn-2",
-        journal,
-        payload: second,
-      }),
+      commitCaptureTurn({ advancementKey: "turn-1", payload: first }),
+      commitCaptureTurn({ advancementKey: "turn-2", payload: second }),
     ])
 
     const markdown = await readFile(
@@ -282,10 +344,10 @@ test("concurrent accepted turns do not lose either file projection", async () =>
       "utf8",
     )
     assert.equal(countOccurrences(markdown, "**Assistant:**"), 2)
-    assert.ok(markdown.includes("question\n"))
-    assert.ok(markdown.includes("answer\n"))
-    assert.ok(markdown.includes("question 2\n"))
-    assert.ok(markdown.includes("answer 2\n"))
+    assert.match(markdown, /question\n/)
+    assert.match(markdown, /answer\n/)
+    assert.match(markdown, /question 2\n/)
+    assert.match(markdown, /answer 2\n/)
 
     const recall = parseRecallLines(
       await readFile(
@@ -303,7 +365,6 @@ test("concurrent accepted turns do not lose either file projection", async () =>
       new Set(["turn-1", "turn-2"]),
     )
   } finally {
-    journal.close()
     await rm(root, { recursive: true, force: true })
   }
 })
@@ -312,7 +373,6 @@ test("context engine declares the full durable OpenClaw turn contract", async ()
   const root = await mkdtemp(join(tmpdir(), "ouc-engine-"))
   const engine = new UniversalCaptureContextEngine({
     config: parseConfig({}),
-    agentDir: join(root, "agent"),
     workspaceDir: join(root, "workspace"),
   })
   try {
@@ -330,7 +390,6 @@ test("context engine declares the full durable OpenClaw turn contract", async ()
     assert.equal("afterTurn" in engine, false)
     assert.deepEqual(await engine.bootstrap(), { bootstrapped: true })
   } finally {
-    await engine.dispose()
     await rm(root, { recursive: true, force: true })
   }
 })
@@ -344,7 +403,6 @@ test("context engine commits the admitted message range through the durable pipe
       recallTurns: 3,
       timezone: "UTC",
     }),
-    agentDir: join(root, "agent"),
     workspaceDir,
   })
   const messages = [
@@ -439,7 +497,6 @@ test("context engine commits the admitted message range through the durable pipe
     assert.equal(recall.entries.length, 1)
     assert.equal(recall.entries[0]?.advancementKey, "turn-engine")
   } finally {
-    await engine.dispose()
     await rm(root, { recursive: true, force: true })
   }
 })

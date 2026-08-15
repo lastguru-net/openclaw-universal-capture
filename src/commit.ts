@@ -1,18 +1,51 @@
-import { appendCaptureEntries } from "./capture.js"
+import { createHash } from "node:crypto"
+
 import {
-  type CaptureCommitJournal,
-  type CaptureTurnCommitPayload,
-} from "./commit-journal.js"
+  commitCaptureEntries,
+  type ConversationCaptureEntry,
+} from "./capture.js"
 import { writeRecallEntries } from "./recall.js"
 
+export type CaptureTurnCommitPayload = {
+  schemaVersion: 1
+  boundary: {
+    admissionEntryId: string
+    terminalEntryId: string
+  }
+  sessionId: string
+  sessionKey: string
+  workspaceDir: string
+  commitDate: string
+  entries: ConversationCaptureEntry[]
+  projection: {
+    folder: string
+    recallFolder: string
+    recallTurns: number
+    recallMaxBytes: number
+  }
+}
+
 type ProjectionOperations = {
-  appendCaptureEntries: typeof appendCaptureEntries
+  commitCaptureEntries: typeof commitCaptureEntries
   writeRecallEntries: typeof writeRecallEntries
+}
+
+export function hashCommitIdentity(payload: CaptureTurnCommitPayload): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        schemaVersion: payload.schemaVersion,
+        boundary: payload.boundary,
+        sessionId: payload.sessionId,
+        sessionKey: payload.sessionKey,
+        entries: payload.entries,
+      }),
+    )
+    .digest("hex")
 }
 
 export async function commitCaptureTurn(params: {
   advancementKey: string
-  journal: CaptureCommitJournal
   payload: CaptureTurnCommitPayload
   operations?: ProjectionOperations
 }): Promise<{
@@ -21,50 +54,44 @@ export async function commitCaptureTurn(params: {
   recallWritten: number
   malformedRecallLines: number
 }> {
-  const begun = params.journal.begin(params.advancementKey, params.payload)
-  if (begun.projected) {
-    return {
-      status: "duplicate",
-      captureWritten: 0,
-      recallWritten: 0,
-      malformedRecallLines: 0,
-    }
-  }
-
   const operations = params.operations ?? {
-    appendCaptureEntries,
+    commitCaptureEntries,
     writeRecallEntries,
   }
-  const payload = begun.payload
-  const captureWritten = await operations.appendCaptureEntries({
-    workspaceDir: payload.workspaceDir,
-    config: { folder: payload.projection.folder },
-    entries: payload.entries,
+  const capture = await operations.commitCaptureEntries({
+    workspaceDir: params.payload.workspaceDir,
+    config: { folder: params.payload.projection.folder },
+    date: params.payload.commitDate,
+    entries: params.payload.entries,
     advancementKey: params.advancementKey,
+    payloadHash: hashCommitIdentity(params.payload),
   })
+
   let recallWritten = 0
   let malformedRecallLines = 0
-  if (payload.projection.recallTurns > 0 && payload.entries.length > 0) {
+  if (
+    params.payload.projection.recallTurns > 0 &&
+    params.payload.entries.length > 0
+  ) {
     const recall = await operations.writeRecallEntries({
-      workspaceDir: payload.workspaceDir,
+      workspaceDir: params.payload.workspaceDir,
       config: {
-        recallFolder: payload.projection.recallFolder,
-        recallTurns: payload.projection.recallTurns,
-        recallMaxBytes: payload.projection.recallMaxBytes,
+        recallFolder: params.payload.projection.recallFolder,
+        recallTurns: params.payload.projection.recallTurns,
+        recallMaxBytes: params.payload.projection.recallMaxBytes,
       },
-      sessionId: payload.sessionId,
-      sessionKey: payload.sessionKey,
-      entries: payload.entries,
+      sessionId: params.payload.sessionId,
+      sessionKey: params.payload.sessionKey,
+      entries: params.payload.entries,
       advancementKey: params.advancementKey,
     })
     recallWritten = recall.written
     malformedRecallLines = recall.malformedLines
   }
 
-  params.journal.complete(params.advancementKey)
   return {
-    status: begun.duplicate ? "duplicate" : "committed",
-    captureWritten,
+    status: capture.status,
+    captureWritten: capture.written,
     recallWritten,
     malformedRecallLines,
   }

@@ -14,8 +14,8 @@ The plugin is intentionally narrow:
 - optionally writes a bounded per-`sessionKey` NDJSON recall buffer
 - optionally registers `universal_recall` so agents can recall recent turns from
   the current runtime-provided conversation key
-- atomically journals accepted turn keys and repairs interrupted output writes
-  without duplicating captured turns
+- atomically commits accepted turns to Markdown and repairs interrupted recall
+  writes on retry without duplicating captured turns
 - returns unchanged context from `assemble()`
 - returns stable `thread_bootstrap` context projection metadata so native Codex
   threads can resume without lossy per-turn OpenClaw history projection
@@ -24,7 +24,7 @@ Version 0.7.0 supports the OpenClaw 2026.8 release line starting with
 2026.8.1-beta.2. Older plugin versions do not implement the durable
 context-engine turn contract introduced by that host release; future 2026.9
 hosts are not claimed compatible until tested. Its Node.js requirement matches
-the host's WAL-safe runtime floor: Node 22.22.3+, 24.15.0+, or 25.9.0+ within
+the supported host runtime floor: Node 22.22.3+, 24.15.0+, or 25.9.0+ within
 the corresponding major release.
 
 ## Privacy and Retention Warning
@@ -32,10 +32,6 @@ the corresponding major release.
 This plugin persistently stores completed user/assistant conversations in
 append-only workspace files. When recall is enabled, it also stores bounded
 per-`sessionKey` NDJSON files containing recent request-response turns.
-While a turn is being committed, the plugin also keeps a private SQLite
-journal under the agent directory. Completed rows retain only the advancement
-key and payload hash; an interrupted row temporarily retains the captured turn
-until OpenClaw retries and both file projections are repaired.
 Captured text can include sensitive prompts, credentials, personal data,
 confidential business material, and operational metadata from connected
 surfaces.
@@ -188,8 +184,10 @@ appends the newest turn, prunes from the oldest valid entries, writes a
 temporary file, and then renames it into place.
 
 The `advancementKey` is supplied by OpenClaw and is used only to make retries
-idempotent. Markdown files contain an equivalent hashed HTML comment before
-each committed turn; the marker is invisible in rendered Markdown.
+idempotent. Markdown is the canonical commit record: each accepted turn is
+written atomically with a hidden HTML marker containing hashes of the
+advancement key and accepted payload. Recall NDJSON is a bounded derived
+projection; a host retry repairs it when Markdown committed before recall.
 
 ## Output
 
