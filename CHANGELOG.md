@@ -4,7 +4,7 @@
 
 - Adopt OpenClaw's durable context-engine turn contract.
 - Restore `sessionKey` projection for capture filters, metadata, and Universal Recall.
-- Commit accepted turns atomically and idempotently in the daily Markdown log.
+- Serialize accepted-turn appends and deduplicate completed turns in the daily Markdown log.
 - Repair interrupted recall writes on host retry without duplicating turns.
 - Update the OpenClaw SDK and minimum Node.js runtime requirements.
 

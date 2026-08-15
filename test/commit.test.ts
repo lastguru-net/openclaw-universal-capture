@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -107,7 +107,7 @@ async function readRecall(workspaceDir: string) {
   )
 }
 
-test("Markdown is the atomic idempotency record", async () => {
+test("Markdown appends entries before the idempotency marker", async () => {
   const root = await mkdtemp(join(tmpdir(), "ouc-markdown-commit-"))
   try {
     await assert.rejects(
@@ -143,17 +143,27 @@ test("Markdown is the atomic idempotency record", async () => {
     )
     assert.equal(countOccurrences(markdown, "openclaw-universal-capture:turn:"), 1)
     assert.equal(countOccurrences(markdown, "**Assistant:**"), 1)
+    assert.ok(
+      markdown.lastIndexOf("**Assistant:**") <
+        markdown.lastIndexOf("openclaw-universal-capture:turn:"),
+    )
   } finally {
     await rm(root, { recursive: true, force: true })
   }
 })
 
-test("context engine writes each accepted turn exactly once", async () => {
+test("context engine serializes concurrent retries and writes once", async () => {
   const root = await mkdtemp(join(tmpdir(), "ouc-engine-commit-"))
   const contextEngine = engine(root)
   const turn = acceptedTurn(root, "turn-1")
   try {
-    assert.deepEqual(await contextEngine.commitTurn(turn), { status: "committed" })
+    assert.deepEqual(await Promise.all([
+      contextEngine.commitTurn(turn),
+      contextEngine.commitTurn(turn),
+    ]), [
+      { status: "committed" },
+      { status: "duplicate" },
+    ])
     assert.deepEqual(await contextEngine.commitTurn(turn), { status: "duplicate" })
 
     const markdown = await readFile(
@@ -164,6 +174,44 @@ test("context engine writes each accepted turn exactly once", async () => {
     const recall = await readRecall(root)
     assert.equal(recall.entries.length, 1)
     assert.equal(recall.entries[0]?.advancementKey, "turn-1")
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("retry appends a complete turn after a markerless partial tail", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ouc-partial-append-"))
+  const filePath = join(
+    root,
+    "conversations",
+    "conversations-2026-06-01.md",
+  )
+  try {
+    await commitCaptureEntries({
+      workspaceDir: root,
+      config: { folder: "conversations" },
+      date: "2026-06-01",
+      entries: [entry("first question", "first answer")],
+      advancementKey: "turn-1",
+    })
+    await appendFile(filePath, "### 10:06\n\n**User:**\npartial", "utf8")
+
+    assert.deepEqual(
+      await commitCaptureEntries({
+        workspaceDir: root,
+        config: { folder: "conversations" },
+        date: "2026-06-01",
+        entries: [entry("second question", "second answer")],
+        advancementKey: "turn-2",
+      }),
+      { status: "committed", written: 1 },
+    )
+
+    const markdown = await readFile(filePath, "utf8")
+    assert.match(markdown, /\*\*User:\*\*\npartial### 10:05/)
+    assert.equal(countOccurrences(markdown, "second question"), 1)
+    assert.equal(countOccurrences(markdown, "second answer"), 1)
+    assert.equal(countOccurrences(markdown, "openclaw-universal-capture:turn:"), 2)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

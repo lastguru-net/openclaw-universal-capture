@@ -3,7 +3,7 @@ import { basename, resolve } from "node:path"
 
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime"
 
-import { atomicWriteText, readTextIfExists, withFileLock } from "./atomic-file.js"
+import { appendText, readTextIfExists, withFileLock } from "./atomic-file.js"
 import type { CaptureFilter, UniversalCaptureConfig } from "./config.js"
 
 export type ConversationCaptureEntry = {
@@ -451,25 +451,25 @@ export async function commitCaptureEntries(params: {
     throw new Error("openclaw-universal-capture commit date is invalid")
   }
 
-  // Keep one logical turn and its marker in one atomic file replacement, even
-  // if a pathological long-running turn crosses the configured daily rollover.
   const target = resolveCaptureFileTarget({
     workspaceDir: params.workspaceDir,
     folder: params.config.folder,
     date: params.date,
   })
   return await withFileLock(target.filePath, async () => {
-    const existing =
-      (await readTextIfExists(target.filePath)) ?? renderInitialFile(target)
-    if (hasCaptureAdvancementMarker(existing, params.advancementKey)) {
+    const existing = await readTextIfExists(target.filePath)
+    if (
+      existing !== undefined &&
+      hasCaptureAdvancementMarker(existing, params.advancementKey)
+    ) {
       return { status: "duplicate", written: 0 }
     }
 
-    await atomicWriteText(
+    await appendText(
       target.filePath,
-      existing +
-        captureAdvancementMarker(params.advancementKey) +
-        params.entries.map(renderCaptureEntry).join(""),
+      (existing === undefined ? renderInitialFile(target) : "") +
+        params.entries.map(renderCaptureEntry).join("") +
+        captureAdvancementMarker(params.advancementKey),
     )
     return { status: "committed", written: params.entries.length }
   })

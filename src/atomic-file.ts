@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { basename, dirname, resolve } from "node:path"
 
 const fileQueues = new Map<string, Promise<void>>()
@@ -40,6 +40,11 @@ export async function readTextIfExists(filePath: string): Promise<string | undef
     }
     throw error
   }
+}
+
+export async function appendText(filePath: string, text: string): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true })
+  await appendFile(filePath, text, { encoding: "utf8", flag: "a" })
 }
 
 export async function atomicWriteText(filePath: string, text: string): Promise<void> {
