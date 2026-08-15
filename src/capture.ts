@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto"
-import { basename, resolve } from "node:path"
+import { appendFile, mkdir, writeFile } from "node:fs/promises"
+import { basename, dirname, resolve } from "node:path"
 
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime"
 
-import { appendText, readTextIfExists, withFileLock } from "./atomic-file.js"
+import { withFileLock } from "./atomic-file.js"
 import type { CaptureFilter, UniversalCaptureConfig } from "./config.js"
 
 export type ConversationCaptureEntry = {
@@ -29,11 +29,6 @@ export type CaptureFileTarget = {
   filePath: string
   permalink: string
   title: string
-}
-
-export type CaptureCommitResult = {
-  status: "committed" | "duplicate"
-  written: number
 }
 
 type DateParts = {
@@ -342,18 +337,6 @@ export function selectCaptureEntries(params: {
   return entries
 }
 
-export function resolveTurnCaptureDate(params: {
-  messages: AgentMessage[]
-  timezone: string
-  rolloverTime: string
-}): string {
-  return formatInTimezone(
-    messageTimestamp(params.messages.at(-1)),
-    params.timezone,
-    params.rolloverTime,
-  ).date
-}
-
 export function resolveCaptureFileTarget(params: {
   workspaceDir: string
   folder: string
@@ -418,59 +401,40 @@ function renderMetadataLines(
   return lines
 }
 
-function captureAdvancementKeyHash(advancementKey: string): string {
-  return createHash("sha256").update(advancementKey).digest("hex")
+async function ensureCaptureFile(target: CaptureFileTarget): Promise<void> {
+  await mkdir(dirname(target.filePath), { recursive: true })
+  try {
+    await writeFile(target.filePath, renderInitialFile(target), {
+      encoding: "utf8",
+      flag: "wx",
+    })
+  } catch (error) {
+    if (asRecord(error)?.code !== "EEXIST") throw error
+  }
 }
 
-export function captureAdvancementMarker(
-  advancementKey: string,
-): string {
-  const keyHash = captureAdvancementKeyHash(advancementKey)
-  return `<!-- openclaw-universal-capture:turn:${keyHash} -->\n`
-}
-
-function hasCaptureAdvancementMarker(
-  text: string,
-  advancementKey: string,
-): boolean {
-  const keyHash = captureAdvancementKeyHash(advancementKey)
-  return text.includes(`<!-- openclaw-universal-capture:turn:${keyHash} -->`)
-}
-
-export async function commitCaptureEntries(params: {
+export async function appendCaptureEntries(params: {
   workspaceDir: string
   config: Pick<UniversalCaptureConfig, "folder">
-  date: string
   entries: ConversationCaptureEntry[]
-  advancementKey: string
-}): Promise<CaptureCommitResult> {
-  if (!params.advancementKey) {
-    throw new Error("openclaw-universal-capture advancement key is empty")
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(params.date)) {
-    throw new Error("openclaw-universal-capture commit date is invalid")
+}): Promise<number> {
+  const grouped = new Map<string, ConversationCaptureEntry[]>()
+  for (const entry of params.entries) {
+    const existing = grouped.get(entry.date)
+    if (existing) existing.push(entry)
+    else grouped.set(entry.date, [entry])
   }
 
-  const target = resolveCaptureFileTarget({
-    workspaceDir: params.workspaceDir,
-    folder: params.config.folder,
-    date: params.date,
-  })
-  return await withFileLock(target.filePath, async () => {
-    const existing = await readTextIfExists(target.filePath)
-    if (
-      existing !== undefined &&
-      hasCaptureAdvancementMarker(existing, params.advancementKey)
-    ) {
-      return { status: "duplicate", written: 0 }
-    }
-
-    await appendText(
-      target.filePath,
-      (existing === undefined ? renderInitialFile(target) : "") +
-        params.entries.map(renderCaptureEntry).join("") +
-        captureAdvancementMarker(params.advancementKey),
-    )
-    return { status: "committed", written: params.entries.length }
-  })
+  let written = 0
+  for (const [date, entries] of grouped) {
+    const target = resolveCaptureFileTarget({
+      workspaceDir: params.workspaceDir,
+      folder: params.config.folder,
+      date,
+    })
+    await withFileLock(target.filePath, () => ensureCaptureFile(target))
+    await appendFile(target.filePath, entries.map(renderCaptureEntry).join(""), "utf8")
+    written += entries.length
+  }
+  return written
 }

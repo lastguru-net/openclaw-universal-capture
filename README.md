@@ -14,8 +14,7 @@ The plugin is intentionally narrow:
 - optionally writes a bounded per-`sessionKey` NDJSON recall buffer
 - optionally registers `universal_recall` so agents can recall recent turns from
   the current runtime-provided conversation key
-- serializes accepted-turn appends to Markdown and repairs interrupted recall
-  writes on retry without duplicating completed turns
+- writes Universal Recall before directly appending accepted turns to Markdown
 - returns unchanged context from `assemble()`
 - returns stable `thread_bootstrap` context projection metadata so native Codex
   threads can resume without lossy per-turn OpenClaw history projection
@@ -177,11 +176,11 @@ appends the newest turn, prunes from the oldest valid entries, writes a
 temporary file, and then renames it into place.
 
 The `advancementKey` is supplied by OpenClaw and is used only to deduplicate
-retries. Each accepted turn is appended to Markdown followed by a hidden HTML
-marker containing a hash of the advancement key. Recall NDJSON is a bounded
-derived projection; a host retry repairs it when Markdown was appended before
-recall. If the process dies during a Markdown append, existing entries remain
-intact, but the newest turn may be partial or repeated when OpenClaw retries it.
+recall retries. Recall is written before Markdown, then each accepted turn is
+appended directly to the daily file without internal markers. If the process
+dies during a Markdown append, existing entries remain intact, but the newest
+turn may be partial. A host replay after a completed append may repeat that
+turn.
 
 ## Output
 

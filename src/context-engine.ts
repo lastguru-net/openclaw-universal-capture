@@ -6,8 +6,7 @@ import { delegateCompactionToRuntime } from "openclaw/plugin-sdk/core"
 import { type PluginLogger } from "openclaw/plugin-sdk/plugin-entry"
 
 import {
-  commitCaptureEntries,
-  resolveTurnCaptureDate,
+  appendCaptureEntries,
   selectCaptureEntries,
 } from "./capture.js"
 import type { UniversalCaptureConfig } from "./config.js"
@@ -86,19 +85,6 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
       sessionKey,
     })
 
-    const date = resolveTurnCaptureDate({
-      messages: params.messages,
-      timezone: this.params.config.timezone,
-      rolloverTime: this.params.config.rolloverTime,
-    })
-    const capture = await commitCaptureEntries({
-      advancementKey: params.advancementKey,
-      workspaceDir,
-      config: this.params.config,
-      date,
-      entries,
-    })
-
     const recall =
       this.params.config.recallTurns > 0 && entries.length > 0
         ? await writeRecallEntries({
@@ -115,10 +101,18 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
         `openclaw-universal-capture ignored ${recall.malformedLines} malformed recall line${recall.malformedLines === 1 ? "" : "s"}`,
       )
     }
+    const written =
+      entries.length > 0
+        ? await appendCaptureEntries({
+            workspaceDir,
+            config: this.params.config,
+            entries,
+          })
+        : 0
     this.params.logger?.debug?.(
-      `openclaw-universal-capture ${capture.status}; appended ${capture.written} conversation entr${capture.written === 1 ? "y" : "ies"} and ${recall.written} recall entr${recall.written === 1 ? "y" : "ies"}`,
+      `openclaw-universal-capture appended ${written} conversation entr${written === 1 ? "y" : "ies"} and ${recall.written} recall entr${recall.written === 1 ? "y" : "ies"}`,
     )
-    return { status: capture.status }
+    return { status: "committed" }
   }
 
   async compact(

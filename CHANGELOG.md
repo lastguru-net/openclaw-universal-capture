@@ -2,10 +2,9 @@
 
 ## 0.7.0 - 2026-08-15
 
-- Adopt OpenClaw's durable context-engine turn contract.
+- Adopt OpenClaw's current accepted-turn context-engine API and transcript fencing declaration.
 - Restore `sessionKey` projection for capture filters, metadata, and Universal Recall.
-- Serialize accepted-turn appends and deduplicate completed turns in the daily Markdown log.
-- Repair interrupted recall writes on host retry without duplicating turns.
+- Write Universal Recall before directly appending the turn to the daily Markdown log.
 - Update the OpenClaw SDK and minimum Node.js runtime requirements.
 
 ## 0.6.0 - 2026-06-09

@@ -1,14 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
+import { mkdir, rename, rm, writeFile } from "node:fs/promises"
 import { basename, dirname, resolve } from "node:path"
 
 const fileQueues = new Map<string, Promise<void>>()
-
-function errorCode(error: unknown): string | undefined {
-  return error && typeof error === "object" && "code" in error
-    ? String(error.code)
-    : undefined
-}
 
 export async function withFileLock<T>(
   filePath: string,
@@ -29,22 +23,6 @@ export async function withFileLock<T>(
     release?.()
     if (fileQueues.get(filePath) === queued) fileQueues.delete(filePath)
   }
-}
-
-export async function readTextIfExists(filePath: string): Promise<string | undefined> {
-  try {
-    return await readFile(filePath, "utf8")
-  } catch (error) {
-    if (errorCode(error) === "ENOENT") {
-      return undefined
-    }
-    throw error
-  }
-}
-
-export async function appendText(filePath: string, text: string): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true })
-  await appendFile(filePath, text, { encoding: "utf8", flag: "a" })
 }
 
 export async function atomicWriteText(filePath: string, text: string): Promise<void> {
