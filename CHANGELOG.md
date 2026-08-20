@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 - 2026-08-20
+
+- Capture only the accepted terminal assistant message by default.
+- Add the `commentary` option; set it to `true` to preserve version 0.7.0's all-assistant-text behavior.
+- Apply `skipNoReply` after terminal selection so omitted terminal markers never fall back to earlier commentary or plan text.
+- Clean generated output before builds so removed source modules cannot leak into release tarballs.
+
 ## 0.7.0 - 2026-08-15
 
 - Adopt OpenClaw's current accepted-turn context-engine API and transcript fencing declaration.

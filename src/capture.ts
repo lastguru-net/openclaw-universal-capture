@@ -284,6 +284,7 @@ export function selectCaptureEntries(params: {
   prePromptMessageCount: number
   timezone: string
   rolloverTime: string
+  commentary: boolean
   skipNoReply: boolean
   includeMessageMetadata: boolean
   stripUntrustedMetadata: boolean
@@ -296,8 +297,19 @@ export function selectCaptureEntries(params: {
   if (!sessionKeyPassesFilters(params.sessionKey, params)) return entries
 
   const start = Math.max(0, Math.min(params.prePromptMessageCount, params.messages.length))
+  // commitTurn supplies an inclusive admitted-user-to-terminal range. In the
+  // default mode, selecting only its final row prevents earlier commentary,
+  // plans, and other text projections from being promoted to completed replies.
+  const messageIndexes = params.commentary
+    ? Array.from(
+        { length: params.messages.length - start },
+        (_, offset) => start + offset,
+      )
+    : params.messages.length > start
+      ? [params.messages.length - 1]
+      : []
 
-  for (let index = start; index < params.messages.length; index++) {
+  for (const index of messageIndexes) {
     const message = params.messages[index]
     if (messageRole(message) !== "assistant") continue
 

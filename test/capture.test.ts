@@ -25,12 +25,21 @@ import {
 type SelectCaptureEntriesParams = Parameters<typeof selectCaptureEntriesBase>[0]
 
 function selectCaptureEntries(
-  params: Omit<SelectCaptureEntriesParams, "agents" | "surfaces" | "channels"> &
-    Partial<Pick<SelectCaptureEntriesParams, "agents" | "surfaces" | "channels">>,
+  params: Omit<
+    SelectCaptureEntriesParams,
+    "agents" | "surfaces" | "channels" | "commentary"
+  > &
+    Partial<
+      Pick<
+        SelectCaptureEntriesParams,
+        "agents" | "surfaces" | "channels" | "commentary"
+      >
+    >,
 ) {
   const config = parseConfig({})
   return selectCaptureEntriesBase({
     ...params,
+    commentary: params.commentary ?? config.commentary,
     agents: params.agents ?? config.agents,
     surfaces: params.surfaces ?? config.surfaces,
     channels: params.channels ?? config.channels,
@@ -116,6 +125,7 @@ test("parseConfig defaults to host timezone and 04:00 rollover", () => {
     recallMaxBytes: 0,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     rolloverTime: "04:00",
+    commentary: false,
     skipNoReply: false,
     includeMessageMetadata: false,
     stripUntrustedMetadata: true,
@@ -156,6 +166,12 @@ test("parseConfig rejects non-string capture filters", () => {
   assert.throws(() => parseConfig({ agents: ["home"] }), /agents must be a string/)
   assert.throws(() => parseConfig({ surfaces: true }), /surfaces must be a string/)
   assert.throws(() => parseConfig({ channels: 123456789012345678 }), /channels must be a string/)
+})
+
+test("parseConfig enables legacy all-text capture only when commentary is true", () => {
+  assert.equal(parseConfig({}).commentary, false)
+  assert.equal(parseConfig({ commentary: false }).commentary, false)
+  assert.equal(parseConfig({ commentary: true }).commentary, true)
 })
 
 test("extractMessageText ignores tool calls and keeps text blocks", () => {
@@ -199,6 +215,79 @@ test("selectCaptureEntries captures assistant text with nearest user", () => {
       assistantText: "final reply",
     },
   ])
+})
+
+test("selectCaptureEntries captures only the accepted terminal message by default", () => {
+  const entries = selectCaptureEntries({
+    messages: [
+      user("request"),
+      assistant("commentary", Date.UTC(2026, 5, 1, 10, 1)),
+      toolOnlyAssistant(Date.UTC(2026, 5, 1, 10, 2)),
+      assistant("Codex plan: pending", Date.UTC(2026, 5, 1, 10, 3)),
+      assistant("final reply", Date.UTC(2026, 5, 1, 10, 5)),
+    ],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+    includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
+  })
+
+  assert.deepEqual(entries.map((entry) => entry.assistantText), ["final reply"])
+})
+
+test("selectCaptureEntries captures all assistant text when commentary is enabled", () => {
+  const entries = selectCaptureEntries({
+    messages: [
+      user("request"),
+      assistant("commentary", Date.UTC(2026, 5, 1, 10, 1)),
+      toolOnlyAssistant(Date.UTC(2026, 5, 1, 10, 2)),
+      assistant("Codex plan: pending", Date.UTC(2026, 5, 1, 10, 3)),
+      assistant("final reply", Date.UTC(2026, 5, 1, 10, 5)),
+    ],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    commentary: true,
+    skipNoReply: false,
+    includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
+  })
+
+  assert.deepEqual(entries.map((entry) => entry.assistantText), [
+    "commentary",
+    "Codex plan: pending",
+    "final reply",
+  ])
+})
+
+test("selectCaptureEntries does not fall back when the terminal message is not text", () => {
+  const entries = selectCaptureEntries({
+    messages: [user("request"), assistant("commentary"), toolOnlyAssistant()],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: false,
+    includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
+  })
+
+  assert.deepEqual(entries, [])
+})
+
+test("selectCaptureEntries applies skipNoReply after terminal selection", () => {
+  const entries = selectCaptureEntries({
+    messages: [user("request"), assistant("commentary"), assistant("NO_REPLY")],
+    prePromptMessageCount: 0,
+    timezone: "UTC",
+    rolloverTime: "04:00",
+    skipNoReply: true,
+    includeMessageMetadata: false,
+    stripUntrustedMetadata: true,
+  })
+
+  assert.deepEqual(entries, [])
 })
 
 test("selectCaptureEntries uses rollover time for conversation date", () => {
@@ -555,6 +644,7 @@ test("writeRecallEntries writes safe per-session ndjson and prunes by turn count
       prePromptMessageCount: 0,
       timezone: "UTC",
       rolloverTime: "04:00",
+      commentary: true,
       skipNoReply: false,
       includeMessageMetadata: false,
       stripUntrustedMetadata: true,
@@ -748,6 +838,7 @@ test("createUniversalRecallTool limits output with optional maxTurns", async () 
       prePromptMessageCount: 0,
       timezone: "UTC",
       rolloverTime: "04:00",
+      commentary: true,
       skipNoReply: false,
       includeMessageMetadata: false,
       stripUntrustedMetadata: true,

@@ -33,6 +33,10 @@
         "type": "string",
         "description": "Local HH:MM time when capture switches to the next conversation day. Defaults to 04:00."
       },
+      "commentary": {
+        "type": "boolean",
+        "description": "When false or omitted, capture only the accepted terminal assistant message. When true, preserve the 0.7.0 behavior and capture every assistant text message in the accepted turn. Defaults to false."
+      },
       "skipNoReply": {
         "type": "boolean",
         "description": "When true, omit turns whose assistant text is exactly NO_REPLY. Defaults to false, so NO_REPLY marker turns are captured."
@@ -89,6 +93,10 @@
       "label": "Rollover Time",
       "placeholder": "04:00",
       "help": "Local HH:MM time when capture switches to the next conversation day."
+    },
+    "commentary": {
+      "label": "Capture Commentary",
+      "help": "When enabled, capture every assistant text message in the accepted turn, including commentary and plan snapshots. Disabled by default."
     },
     "skipNoReply": {
       "label": "Skip NO_REPLY",

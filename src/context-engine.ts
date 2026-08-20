@@ -16,7 +16,7 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
   readonly info = {
     id: "openclaw-universal-capture",
     name: "OpenClaw Universal Capture",
-    version: "0.7.0",
+    version: "0.7.1",
     acceptedHostParams: ["sessionKey"] as string[],
     transcriptSemantics: {
       currentTurnFence: "before-current-turn-entry-v1",
@@ -76,6 +76,7 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
       prePromptMessageCount: 0,
       timezone: this.params.config.timezone,
       rolloverTime: this.params.config.rolloverTime,
+      commentary: this.params.config.commentary,
       skipNoReply: this.params.config.skipNoReply,
       includeMessageMetadata: this.params.config.includeMessageMetadata,
       stripUntrustedMetadata: this.params.config.stripUntrustedMetadata,

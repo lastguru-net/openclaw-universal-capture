@@ -80,6 +80,33 @@ function acceptedTurn(
   }
 }
 
+function acceptedTurnWithProgress(
+  root: string,
+  advancementKey: string,
+): Parameters<UniversalCaptureContextEngine["commitTurn"]>[0] {
+  const turn = acceptedTurn(root, advancementKey)
+  turn.messages = [
+    turn.messages[0]!,
+    {
+      role: "assistant",
+      content: "commentary",
+      timestamp: Date.UTC(2026, 5, 1, 10, 1),
+    },
+    {
+      role: "assistant",
+      content: "Codex plan: pending",
+      timestamp: Date.UTC(2026, 5, 1, 10, 2),
+    },
+    turn.messages[1]!,
+  ] as AgentMessage[]
+  turn.terminal = {
+    ...turn.terminal,
+    rawSeq: 4,
+    activeMessagePosition: 3,
+  }
+  return turn
+}
+
 function engine(
   workspaceDir: string,
   config: Record<string, unknown> = {},
@@ -154,6 +181,51 @@ test("context engine writes recall before appending Markdown", async () => {
     const recall = await readRecall(root)
     assert.equal(recall.entries.length, 1)
     assert.equal(recall.entries[0]?.advancementKey, "turn-1")
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("context engine captures only the terminal response by default", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ouc-engine-final-only-"))
+  const contextEngine = engine(root)
+  try {
+    await contextEngine.commitTurn(acceptedTurnWithProgress(root, "turn-1"))
+
+    const markdown = await readFile(
+      join(root, "conversations", "conversations-2026-06-01.md"),
+      "utf8",
+    )
+    assert.equal(countOccurrences(markdown, "**Assistant:**"), 1)
+    assert.doesNotMatch(markdown, /commentary/)
+    assert.doesNotMatch(markdown, /Codex plan/)
+    assert.match(markdown, /answer/)
+    assert.deepEqual(
+      (await readRecall(root)).entries.map((item) => item.assistantText),
+      ["answer"],
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("context engine preserves 0.7.0 all-text capture when commentary is enabled", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ouc-engine-commentary-"))
+  const contextEngine = engine(root, { commentary: true })
+  try {
+    await contextEngine.commitTurn(acceptedTurnWithProgress(root, "turn-1"))
+
+    const markdown = await readFile(
+      join(root, "conversations", "conversations-2026-06-01.md"),
+      "utf8",
+    )
+    assert.equal(countOccurrences(markdown, "**Assistant:**"), 3)
+    assert.match(markdown, /commentary/)
+    assert.match(markdown, /Codex plan/)
+    assert.deepEqual(
+      (await readRecall(root)).entries.map((item) => item.assistantText),
+      ["commentary", "Codex plan: pending", "answer"],
+    )
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -300,6 +372,7 @@ test("context engine declares the OpenClaw turn contract", async () => {
       currentTurnFence: "before-current-turn-entry-v1",
       turnAdvancementIdempotency: "atomic-idempotent-v1",
     })
+    assert.equal(contextEngine.info.version, "0.7.1")
     assert.equal(typeof contextEngine.commitTurn, "function")
     assert.equal("afterTurn" in contextEngine, false)
     assert.deepEqual(await contextEngine.bootstrap(), { bootstrapped: true })

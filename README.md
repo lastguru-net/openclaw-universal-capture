@@ -5,7 +5,9 @@ completed user/assistant conversation pairs into append-only Markdown files.
 
 The plugin is intentionally narrow:
 
-- captures assistant text messages paired with the nearest preceding user message
+- captures only the accepted terminal assistant text by default
+- optionally preserves the 0.7.0 behavior and captures every assistant text
+  message in the accepted turn
 - ignores tool calls, tool results, and non-message transcript records
 - writes one combined `Conversation` note per day
 - creates the daily file lazily with `Conversation` frontmatter
@@ -50,6 +52,7 @@ retention process.
           "recallMaxBytes": 0,
           "timezone": "Europe/Riga",
           "rolloverTime": "04:00",
+          "commentary": false,
           "skipNoReply": false,
           "includeMessageMetadata": false,
           "stripUntrustedMetadata": true,
@@ -89,11 +92,20 @@ host timezone.
 `rolloverTime` controls when capture switches to the next conversation day in
 the configured timezone. The default is `04:00`.
 
+`commentary` controls whether non-terminal assistant text is captured. The
+default is `false`, which captures only the accepted terminal assistant message
+from each committed turn. Set it to `true` to preserve version 0.7.0 behavior:
+every assistant text message in the accepted turn is captured, including Codex
+commentary and plan snapshots when the host persists them. This compatibility
+mode is intentionally based on turn position, not provider-specific metadata.
+
 `skipNoReply` controls how turns ending with the assistant text `NO_REPLY` are
 handled. By default it is `false`, so those marker replies are written to the
 conversation file like any other assistant text. Set it to `true` when you want
 to omit turns where `NO_REPLY` means the visible response was delivered through
-some other channel or there was intentionally no chat-visible answer.
+some other channel or there was intentionally no chat-visible answer. In the
+default terminal-only mode, `skipNoReply` is applied after terminal selection;
+the plugin never falls back to earlier commentary.
 
 `includeMessageMetadata` controls whether entry metadata is written directly
 below each timestamp heading. The default is `false`. When enabled, the plugin

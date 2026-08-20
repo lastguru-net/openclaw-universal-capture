@@ -7,6 +7,7 @@ export type UniversalCaptureConfig = {
   recallMaxBytes: number
   timezone: string
   rolloverTime: string
+  commentary: boolean
   skipNoReply: boolean
   includeMessageMetadata: boolean
   stripUntrustedMetadata: boolean
@@ -31,6 +32,7 @@ const ALLOWED_KEYS = new Set([
   "recallMaxBytes",
   "timezone",
   "rolloverTime",
+  "commentary",
   "skipNoReply",
   "includeMessageMetadata",
   "stripUntrustedMetadata",
@@ -154,6 +156,8 @@ export function parseConfig(raw: unknown): UniversalCaptureConfig {
     recallMaxBytes: normalizeNonNegativeInteger("recallMaxBytes", config.recallMaxBytes),
     timezone,
     rolloverTime: normalizeRolloverTime(config.rolloverTime),
+    commentary:
+      typeof config.commentary === "boolean" ? config.commentary : false,
     skipNoReply:
       typeof config.skipNoReply === "boolean" ? config.skipNoReply : false,
     includeMessageMetadata:
