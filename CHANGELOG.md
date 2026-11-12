@@ -2,9 +2,8 @@
 
 ## Unreleased
 
-- Capture confirmed final message-tool delivery mirrors even when a tool receipt ends the accepted turn and no ordinary reply follows.
-- Keep message-tool progress out of final-only capture and preserve the delivered final over trailing completion text.
-- Preserve all-assistant-text capture with `commentary: true`; apply `skipNoReply` after final-answer selection.
+- Fix final-only capture dropping confirmed message-tool replies when a tool receipt or completion text follows the delivered answer.
+- Fix final-only capture incorrectly recording a message-tool progress mirror when it is the last transcript row.
 
 ## 0.7.1 - 2026-08-20
 
