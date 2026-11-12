@@ -21,28 +21,6 @@ The plugin is intentionally narrow:
 - returns stable `thread_bootstrap` context projection metadata so native Codex
   threads can resume without lossy per-turn OpenClaw history projection
 
-## Compatibility and Development
-
-Version 0.8.0 is built and tested against OpenClaw 2026.11.3. The plugin's
-minimum host/API version remains 2026.8.1-beta.2; this release does not require
-new SDK exports. Final message-tool capture requires the host to persist the
-confirmed delivery mirror in the accepted turn.
-
-For development, use a Node.js version supported by the pinned OpenClaw SDK:
-24.16.0 or later in the 24.x line, or 26.1.0 or later. The plugin's broader
-runtime Node.js range remains available for older compatible hosts. Node type
-definitions stay on the 24.x line to avoid accidentally using Node-26-only APIs.
-
-```sh
-npm ci
-npm run release:check
-```
-
-The release check type-checks, runs the tests, and checks the package contents
-without publishing. OpenClaw is a peer dependency supplied by the host; its
-pinned development dependency is used for SDK validation, not bundled in the
-plugin tarball.
-
 ## Privacy and Retention Warning
 
 This plugin persistently stores completed user/assistant conversations in

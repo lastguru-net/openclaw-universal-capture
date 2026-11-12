@@ -6,6 +6,7 @@
 - Fix final-only capture incorrectly recording a message-tool progress mirror when it is the last transcript row.
 - Preserve the host-resolved session target and runtime context when delegating compaction, including the active workspace and configuration.
 - Update the OpenClaw development SDK/build target to 2026.11.3, TypeScript to 7.0.2, and Node.js 24 types to 24.19.2; refresh the dependency lockfile.
+- Require OpenClaw 2026.11.3 or newer and align Node.js requirements with that host: `>=24.16.0 <25 || >=26.1.0`.
 
 ## 0.7.1 - 2026-08-20
 

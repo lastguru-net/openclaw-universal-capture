@@ -69,6 +69,8 @@ test("release metadata matches the installed SDK and packaged entrypoints", asyn
   assert.equal(lock.packages[""].version, packageJson.version)
   assert.equal(packageJson.openclaw.build.openclawVersion, sdk.version)
   assert.equal(packageJson.devDependencies.openclaw, sdk.version)
+  assert.equal(packageJson.engines.node, sdk.engines.node)
+  assert.equal(packageJson.peerDependencies.openclaw, `>=${sdk.version}`)
   assert.equal(packageJson.openclaw.compat.pluginApi, packageJson.peerDependencies.openclaw)
   assert.equal(packageJson.openclaw.install.minHostVersion, packageJson.peerDependencies.openclaw)
   assert.equal(manifest.id, plugin.id)
