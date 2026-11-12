@@ -1,6 +1,6 @@
 {
   "name": "openclaw-universal-capture",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "OpenClaw context engine for append-only Markdown conversation capture.",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,19 +32,19 @@
   ],
   "license": "MIT",
   "engines": {
-    "node": ">=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0"
+    "node": ">=24.16.0 <25 || >=26.1.0"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/lastguru-net/openclaw-universal-capture"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.8.1-beta.2"
+    "openclaw": ">=2026.11.3"
   },
   "devDependencies": {
-    "@types/node": "^24.12.4",
-    "openclaw": "2026.8.1-beta.2",
-    "typescript": "^6.0.3"
+    "@types/node": "^24.19.2",
+    "openclaw": "2026.11.3",
+    "typescript": "^7.0.2"
   },
   "openclaw": {
     "extensions": [
@@ -54,13 +54,13 @@
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.8.1-beta.2"
+      "pluginApi": ">=2026.11.3"
     },
     "install": {
-      "minHostVersion": ">=2026.8.1-beta.2"
+      "minHostVersion": ">=2026.11.3"
     },
     "build": {
-      "openclawVersion": "2026.8.1-beta.2"
+      "openclawVersion": "2026.11.3"
     }
   }
 }

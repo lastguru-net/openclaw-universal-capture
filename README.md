@@ -5,7 +5,7 @@ completed user/assistant conversation pairs into append-only Markdown files.
 
 The plugin is intentionally narrow:
 
-- captures only the accepted terminal assistant text by default
+- captures only the final answer by default, including confirmed message-tool sends
 - optionally preserves the 0.7.0 behavior and captures every assistant text
   message in the accepted turn
 - ignores tool calls, tool results, and non-message transcript records
