@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Capture confirmed final message-tool delivery mirrors even when a tool receipt ends the accepted turn and no ordinary reply follows.
+- Keep message-tool progress out of final-only capture and preserve the delivered final over trailing completion text.
+- Preserve all-assistant-text capture with `commentary: true`; apply `skipNoReply` after final-answer selection.
+
 ## 0.7.1 - 2026-08-20
 
 - Capture only the accepted terminal assistant message by default.

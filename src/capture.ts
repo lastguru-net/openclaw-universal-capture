@@ -279,6 +279,36 @@ export function stripLeadingUntrustedMetadata(text: string): string {
   return text.slice(afterSender ?? afterConversationInfo)
 }
 
+function selectFinalMessageIndexes(messages: AgentMessage[], start: number): number[] {
+  // The host commits the inclusive user-to-terminal range, not necessarily an
+  // assistant-last range. A confirmed final send is mirrored before its receipt.
+  // Match OpenClaw's terminal source-reply marker, not the send's arguments.
+  for (let index = messages.length - 1; index >= start; index--) {
+    const message = messages[index]
+    if (messageRole(message) === "user") break
+    if (messageRole(message) !== "assistant") continue
+    const mirror = asRecord(asRecord(message)?.openclawDeliveryMirror)
+    if (
+      mirror?.kind === "message-tool-source-reply" &&
+      mirror.final === true &&
+      typeof mirror.sourceTurnId === "string" &&
+      mirror.sourceTurnId.trim()
+    ) {
+      // Select before filtering text/NO_REPLY: never fall back to progress or an
+      // older answer when the actual final is empty or intentionally omitted.
+      return [index]
+    }
+  }
+
+  // Preserve ordinary terminal-row selection without searching backwards for
+  // arbitrary assistant text. A non-terminal source-reply mirror is progress,
+  // even if it happens to be the last row.
+  const terminalIndex = messages.length - 1
+  if (terminalIndex < start) return []
+  const mirror = asRecord(asRecord(messages[terminalIndex])?.openclawDeliveryMirror)
+  return mirror?.kind === "message-tool-source-reply" ? [] : [terminalIndex]
+}
+
 export function selectCaptureEntries(params: {
   messages: AgentMessage[]
   prePromptMessageCount: number
@@ -297,17 +327,12 @@ export function selectCaptureEntries(params: {
   if (!sessionKeyPassesFilters(params.sessionKey, params)) return entries
 
   const start = Math.max(0, Math.min(params.prePromptMessageCount, params.messages.length))
-  // commitTurn supplies an inclusive admitted-user-to-terminal range. In the
-  // default mode, selecting only its final row prevents earlier commentary,
-  // plans, and other text projections from being promoted to completed replies.
   const messageIndexes = params.commentary
     ? Array.from(
         { length: params.messages.length - start },
         (_, offset) => start + offset,
       )
-    : params.messages.length > start
-      ? [params.messages.length - 1]
-      : []
+    : selectFinalMessageIndexes(params.messages, start)
 
   for (const index of messageIndexes) {
     const message = params.messages[index]
