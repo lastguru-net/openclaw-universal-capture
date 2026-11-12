@@ -367,12 +367,14 @@ test("context engine declares the OpenClaw turn contract", async () => {
   const root = await mkdtemp(join(tmpdir(), "ouc-engine-"))
   const contextEngine = engine(root)
   try {
-    assert.deepEqual(contextEngine.info.acceptedHostParams, ["sessionKey"])
+    assert.deepEqual(contextEngine.info.acceptedHostParams, [
+      "sessionKey", "sessionTarget", "runtimeContext",
+    ])
     assert.deepEqual(contextEngine.info.transcriptSemantics, {
       currentTurnFence: "before-current-turn-entry-v1",
       turnAdvancementIdempotency: "atomic-idempotent-v1",
     })
-    assert.equal(contextEngine.info.version, "0.7.1")
+    assert.equal(contextEngine.info.version, "0.8.0")
     assert.equal(typeof contextEngine.commitTurn, "function")
     assert.equal("afterTurn" in contextEngine, false)
     assert.deepEqual(await contextEngine.bootstrap(), { bootstrapped: true })

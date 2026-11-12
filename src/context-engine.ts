@@ -16,8 +16,10 @@ export class UniversalCaptureContextEngine implements HarnessContextEngine {
   readonly info = {
     id: "openclaw-universal-capture",
     name: "OpenClaw Universal Capture",
-    version: "0.7.1",
-    acceptedHostParams: ["sessionKey"] as string[],
+    version: "0.8.0",
+    // The runtime delegate needs the host-resolved session target and execution
+    // context; otherwise the registry strips them before compact() runs.
+    acceptedHostParams: ["sessionKey", "sessionTarget", "runtimeContext"] as string[],
     transcriptSemantics: {
       currentTurnFence: "before-current-turn-entry-v1",
       turnAdvancementIdempotency: "atomic-idempotent-v1",
