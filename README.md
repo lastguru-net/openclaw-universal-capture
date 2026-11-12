@@ -93,19 +93,30 @@ host timezone.
 the configured timezone. The default is `04:00`.
 
 `commentary` controls whether non-terminal assistant text is captured. The
-default is `false`, which captures only the accepted terminal assistant message
-from each committed turn. Set it to `true` to preserve version 0.7.0 behavior:
-every assistant text message in the accepted turn is captured, including Codex
-commentary and plan snapshots when the host persists them. This compatibility
-mode is intentionally based on turn position, not provider-specific metadata.
+default is `false`, which captures one final answer from each committed turn.
+A confirmed final message-tool send is selected from its persisted assistant
+delivery mirror (`openclawDeliveryMirror.kind: "message-tool-source-reply"`,
+`final: true`, and a nonempty `sourceTurnId`), even if its tool receipt follows
+it and no ordinary assistant reply is generated. The latest final mirror in
+the current user turn takes precedence over any later completion text. Without
+one, capture still selects only the last row and requires assistant text;
+non-final source-reply mirrors are excluded. It never reconstructs sent text
+from tool arguments or receipts. Hosts must persist the final delivery mirror
+for this path to work.
 
-`skipNoReply` controls how turns ending with the assistant text `NO_REPLY` are
-handled. By default it is `false`, so those marker replies are written to the
+Set `commentary` to `true` to preserve version 0.7.0 behavior: every assistant
+text message in the accepted turn is captured, including Codex commentary,
+plan snapshots, and message-tool progress/final mirrors when the host persists
+them. This is not a filter for the commentary channel alone.
+
+`skipNoReply` controls whether selected assistant text equal to `NO_REPLY` is
+omitted. By default it is `false`, so those marker replies are written to the
 conversation file like any other assistant text. Set it to `true` when you want
 to omit turns where `NO_REPLY` means the visible response was delivered through
 some other channel or there was intentionally no chat-visible answer. In the
-default terminal-only mode, `skipNoReply` is applied after terminal selection;
-the plugin never falls back to earlier commentary.
+default final-only mode, `skipNoReply` is applied after final-answer selection;
+the plugin never falls back to earlier commentary. A trailing `NO_REPLY` does
+not replace a confirmed final delivery mirror.
 
 `includeMessageMetadata` controls whether entry metadata is written directly
 below each timestamp heading. The default is `false`. When enabled, the plugin

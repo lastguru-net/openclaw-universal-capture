@@ -35,7 +35,7 @@
       },
       "commentary": {
         "type": "boolean",
-        "description": "When false or omitted, capture only the accepted terminal assistant message. When true, preserve the 0.7.0 behavior and capture every assistant text message in the accepted turn. Defaults to false."
+        "description": "When false or omitted, capture the confirmed final message-tool delivery mirror, or otherwise the terminal assistant text. When true, capture every assistant text message in the accepted turn, including progress mirrors. Defaults to false."
       },
       "skipNoReply": {
         "type": "boolean",
@@ -96,7 +96,7 @@
     },
     "commentary": {
       "label": "Capture Commentary",
-      "help": "When enabled, capture every assistant text message in the accepted turn, including commentary and plan snapshots. Disabled by default."
+      "help": "When enabled, capture every assistant text message, including commentary, plan snapshots, and progress mirrors. When disabled, capture only the final answer, including confirmed message-tool finals."
     },
     "skipNoReply": {
       "label": "Skip NO_REPLY",

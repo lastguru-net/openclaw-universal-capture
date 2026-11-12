@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Fix final-only capture dropping confirmed message-tool replies when a tool receipt or completion text follows the delivered answer.
+- Fix final-only capture incorrectly recording a message-tool progress mirror when it is the last transcript row.
+
 ## 0.7.1 - 2026-08-20
 
 - Capture only the accepted terminal assistant message by default.
