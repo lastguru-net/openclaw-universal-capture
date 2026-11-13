@@ -1,11 +1,12 @@
 # OpenClaw Universal Capture
 
 `openclaw-universal-capture` is a small OpenClaw context engine that captures
-completed user/assistant conversation pairs into append-only Markdown files.
+completed user/assistant conversation turns into append-only Markdown files.
 
 The plugin is intentionally narrow:
 
 - captures only the final answer by default, including confirmed message-tool sends
+- preserves multiple user inputs in an accepted turn as ordered blocks before its answer
 - optionally preserves the 0.7.0 behavior and captures every assistant text
   message in the accepted turn
 - ignores tool calls, tool results, and non-message transcript records
@@ -109,6 +110,19 @@ text message in the accepted turn is captured, including Codex commentary,
 plan snapshots, and message-tool progress/final mirrors when the host persists
 them. This is not a filter for the commentary channel alone.
 
+Capture uses the host's accepted range, from the admitted user message through
+the accepted terminal message. It retains each nonempty user text before the
+selected answer, including the original request and mid-turn steering, in order.
+Tool activity and commentary do not split those inputs into separate turns.
+Rows explicitly excluded from model context or marked as human-addressed are
+not treated as agent inputs. Capture records the supplied inputs; it does not
+infer whether the answer semantically addresses every one of them.
+
+A multi-input turn has multiple `User` blocks and one `Assistant` block by
+default. With `commentary: true`, each selected assistant text includes only
+the inputs that precede it, never steering that arrived afterward. Historical
+messages outside the accepted range are not included.
+
 `skipNoReply` controls whether selected assistant text equal to `NO_REPLY` is
 omitted. By default it is `false`, so those marker replies are written to the
 conversation file like any other assistant text. Set it to `true` when you want
@@ -121,7 +135,11 @@ not replace a confirmed final delivery mirror.
 `includeMessageMetadata` controls whether entry metadata is written directly
 below each timestamp heading. The default is `false`. When enabled, the plugin
 adds agent, surface, and channel values inferred from `sessionKey`, and adds a
-sender line only when the captured user message exposes `senderUsername`.
+sender line when the captured user message exposes `senderUsername`, either
+directly or in canonical `__openclaw` metadata. Multi-input entries put sender
+lines beside the individual user blocks instead of attributing the entire turn
+to one sender. Sender lines in Markdown remain optional; recall retains available
+sender usernames as before.
 
 `stripUntrustedMetadata` controls whether leading OpenClaw envelope metadata is
 removed from captured user text. The default is `true`. It strips only when the
@@ -193,6 +211,15 @@ written under `recallFolder`. Each NDJSON line stores:
 }
 ```
 
+Multi-input turns additionally store `userInputs`, an ordered array of
+`{ "text": "...", "senderUsername": "..." }` objects (the sender is optional).
+Their `userText` contains all input texts joined by blank lines for existing
+consumers. The plugin's Markdown and recall renderers use `userInputs` to keep
+the block boundaries and per-input senders. There is no entry-level sender on
+a multi-input turn. Single-input records keep the existing shape, and old recall
+lines without `userInputs` remain readable. No historical Markdown backfill or
+recall migration is performed.
+
 Malformed old NDJSON lines are ignored during recall-file rewrite so a damaged
 line does not break future capture. The rewrite salvages valid old entries,
 appends the newest turn, prunes from the oldest valid entries, writes a
@@ -240,6 +267,29 @@ Sender: operator
 
 **Assistant:**
 ...
+
+---
+```
+
+A turn with an original request and an additional steered request is rendered
+as one entry (sender lines shown with `includeMessageMetadata: true`):
+
+```markdown
+### 10:05
+Agent: home
+Surface: discord
+Channel: channel:123456789012345678
+
+**User:**
+Sender: alice
+Original request.
+
+**User:**
+Sender: bob
+Additional request sent while the agent was working.
+
+**Assistant:**
+Combined answer.
 
 ---
 ```
