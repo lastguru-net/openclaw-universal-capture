@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Preserve original and additional user inputs from the same accepted turn as ordered blocks in Markdown capture and Universal Recall, rather than retaining only the last request.
+- Attribute multi-input blocks to their individual senders, including usernames stored in canonical OpenClaw metadata.
+
 ## 0.8.0 - 2026-11-12
 
 - Fix final-only capture dropping confirmed message-tool replies when a tool receipt or completion text follows the delivered answer.

@@ -13,7 +13,15 @@ export type ConversationCaptureEntry = {
   senderUsername?: string
   metadata?: ConversationCaptureMetadata
   userText: string
+  // Present for multi-input turns. userText remains a joined-text fallback for
+  // existing consumers; renderers use these ordered blocks when available.
+  userInputs?: CapturedUserInput[]
   assistantText: string
+}
+
+export type CapturedUserInput = {
+  text: string
+  senderUsername?: string
 }
 
 export type ConversationCaptureMetadata = {
@@ -144,7 +152,7 @@ function messageTimestamp(message: unknown): number | string | undefined {
 
 function messageSenderUsername(message: unknown): string | undefined {
   const record = asRecord(message)
-  const senderUsername = record?.senderUsername
+  const senderUsername = record?.senderUsername ?? asRecord(record?.__openclaw)?.senderUsername
   return typeof senderUsername === "string" && senderUsername.trim().length > 0
     ? senderUsername.trim()
     : undefined
@@ -179,7 +187,7 @@ function parseSessionKey(sessionKey: string | undefined): SessionKeyParts {
 
 function buildCaptureMetadata(params: {
   sessionKey?: string
-  userMessage: AgentMessage
+  userMessage?: AgentMessage
 }): ConversationCaptureMetadata | undefined {
   const session = parseSessionKey(params.sessionKey)
   const metadata: ConversationCaptureMetadata = {
@@ -213,16 +221,27 @@ function sessionKeyPassesFilters(
   )
 }
 
-function findCorrespondingUser(messages: AgentMessage[], assistantIndex: number): {
+function findUserInputs(messages: AgentMessage[], start: number, assistantIndex: number): {
   message: AgentMessage
   text: string
-} | undefined {
-  for (let index = assistantIndex - 1; index >= 0; index--) {
+}[] {
+  const inputs: { message: AgentMessage; text: string }[] = []
+  // commitTurn supplies the admitted-user-to-terminal range, not full history.
+  // Commentary and tool activity do not end that range; later user inputs must
+  // not be attached retroactively to an earlier selected assistant message.
+  for (let index = start; index < assistantIndex; index++) {
     if (messageRole(messages[index]) !== "user") continue
-    const text = extractMessageText(messages[index])
-    if (text) return { message: messages[index], text }
+    const message = messages[index]
+    const record = asRecord(message)
+    // These rows can occur inside a positional range without being agent input.
+    if (
+      record?.excludeFromContext === true ||
+      asRecord(record?.__openclaw)?.humanAddressed === true
+    ) continue
+    const text = extractMessageText(message)
+    if (text) inputs.push({ message, text })
   }
-  return undefined
+  return inputs
 }
 
 const CONVERSATION_INFO_HEADER = "Conversation info (untrusted metadata):\n"
@@ -342,8 +361,19 @@ export function selectCaptureEntries(params: {
     if (!assistantText) continue
     if (params.skipNoReply && assistantText.trim() === "NO_REPLY") continue
 
-    const user = findCorrespondingUser(params.messages, index)
-    if (!user) continue
+    const users = findUserInputs(params.messages, start, index)
+    const userInputs = users.map((user): CapturedUserInput => ({
+      text: params.stripUntrustedMetadata
+        ? stripLeadingUntrustedMetadata(user.text)
+        : user.text,
+      ...(messageSenderUsername(user.message)
+        ? { senderUsername: messageSenderUsername(user.message) }
+        : {}),
+    }))
+    if (userInputs.length === 0) continue
+    // A shared entry-level sender would misattribute multi-person turns.
+    const singleUser = userInputs.length === 1 ? users[0] : undefined
+    const senderUsername = singleUser ? messageSenderUsername(singleUser.message) : undefined
 
     const dateParts = formatInTimezone(
       messageTimestamp(message),
@@ -353,20 +383,17 @@ export function selectCaptureEntries(params: {
     entries.push({
       ...dateParts,
       timestamp: messageTimestampIso(message),
-      ...(messageSenderUsername(user.message)
-        ? { senderUsername: messageSenderUsername(user.message) }
-        : {}),
+      ...(senderUsername ? { senderUsername } : {}),
       ...(params.includeMessageMetadata
         ? {
             metadata: buildCaptureMetadata({
               sessionKey: params.sessionKey,
-              userMessage: user.message,
-            }),
+              userMessage: singleUser?.message,
+            }) ?? {},
           }
         : {}),
-      userText: params.stripUntrustedMetadata
-        ? stripLeadingUntrustedMetadata(user.text)
-        : user.text,
+      userText: userInputs.map((input) => input.text).join("\n\n"),
+      ...(userInputs.length > 1 ? { userInputs } : {}),
       assistantText,
     })
   }
@@ -410,13 +437,19 @@ export function renderInitialFile(target: CaptureFileTarget): string {
 
 export function renderCaptureEntry(entry: ConversationCaptureEntry): string {
   const metadataLines = renderMetadataLines(entry.metadata)
+  const userBlocks = entry.userInputs
+    ? entry.userInputs.flatMap((input) => [
+        "**User:**",
+        ...(entry.metadata && input.senderUsername ? [`Sender: ${input.senderUsername}`] : []),
+        input.text.trimEnd(),
+        "",
+      ])
+    : ["**User:**", entry.userText.trimEnd(), ""]
   return [
     `### ${entry.time}`,
     ...metadataLines,
     "",
-    "**User:**",
-    entry.userText.trimEnd(),
-    "",
+    ...userBlocks,
     "**Assistant:**",
     entry.assistantText.trimEnd(),
     "",
