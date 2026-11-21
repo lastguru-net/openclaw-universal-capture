@@ -632,15 +632,13 @@ test("writeRecallEntries writes safe per-session ndjson and prunes by turn count
   try {
     const config = parseConfig({ recallTurns: 2, recallFolder: "recall" })
     const sessionKey = "agent:home:discord:channel:123456789012345678"
-    const entries = selectCaptureEntries({
-      messages: [
-        user("one", Date.UTC(2026, 5, 1, 10, 0)),
-        assistant("first", Date.UTC(2026, 5, 1, 10, 1)),
-        user("two", Date.UTC(2026, 5, 1, 10, 2)),
-        assistant("second", Date.UTC(2026, 5, 1, 10, 3)),
-        user("three", Date.UTC(2026, 5, 1, 10, 4)),
-        assistant("third", Date.UTC(2026, 5, 1, 10, 5)),
-      ],
+    // Each commit supplies one accepted range, not the entire conversation.
+    const entries = [
+      [user("one"), assistant("first")],
+      [user("two"), assistant("second")],
+      [user("three"), assistant("third")],
+    ].flatMap((messages) => selectCaptureEntries({
+      messages,
       prePromptMessageCount: 0,
       timezone: "UTC",
       rolloverTime: "04:00",
@@ -649,7 +647,7 @@ test("writeRecallEntries writes safe per-session ndjson and prunes by turn count
       includeMessageMetadata: false,
       stripUntrustedMetadata: true,
       sessionKey,
-    })
+    }))
 
     await writeRecallEntries({
       workspaceDir: dir,
@@ -826,15 +824,13 @@ test("createUniversalRecallTool limits output with optional maxTurns", async () 
   try {
     const config = parseConfig({ recallTurns: 3, recallFolder: "recall" })
     const sessionKey = "agent:home:discord:channel:123456789012345678"
-    const entries = selectCaptureEntries({
-      messages: [
-        user("one", Date.UTC(2026, 5, 1, 10, 0)),
-        assistant("first", Date.UTC(2026, 5, 1, 10, 1)),
-        user("two", Date.UTC(2026, 5, 1, 10, 2)),
-        assistant("second", Date.UTC(2026, 5, 1, 10, 3)),
-        user("three", Date.UTC(2026, 5, 1, 10, 4)),
-        assistant("third", Date.UTC(2026, 5, 1, 10, 5)),
-      ],
+    // Each commit supplies one accepted range, not the entire conversation.
+    const entries = [
+      [user("one"), assistant("first")],
+      [user("two"), assistant("second")],
+      [user("three"), assistant("third")],
+    ].flatMap((messages) => selectCaptureEntries({
+      messages,
       prePromptMessageCount: 0,
       timezone: "UTC",
       rolloverTime: "04:00",
@@ -843,7 +839,7 @@ test("createUniversalRecallTool limits output with optional maxTurns", async () 
       includeMessageMetadata: false,
       stripUntrustedMetadata: true,
       sessionKey,
-    })
+    }))
     await writeRecallEntries({
       workspaceDir: dir,
       config,

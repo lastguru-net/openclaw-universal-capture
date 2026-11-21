@@ -13,7 +13,15 @@ export type ConversationCaptureEntry = {
   senderUsername?: string
   metadata?: ConversationCaptureMetadata
   userText: string
+  // Present for multi-input turns. userText remains a joined-text fallback for
+  // existing consumers; renderers use these ordered blocks when available.
+  userInputs?: CapturedUserInput[]
   assistantText: string
+}
+
+export type CapturedUserInput = {
+  text: string
+  senderUsername?: string
 }
 
 export type ConversationCaptureMetadata = {
@@ -144,7 +152,7 @@ function messageTimestamp(message: unknown): number | string | undefined {
 
 function messageSenderUsername(message: unknown): string | undefined {
   const record = asRecord(message)
-  const senderUsername = record?.senderUsername
+  const senderUsername = record?.senderUsername ?? asRecord(record?.__openclaw)?.senderUsername
   return typeof senderUsername === "string" && senderUsername.trim().length > 0
     ? senderUsername.trim()
     : undefined
@@ -179,7 +187,7 @@ function parseSessionKey(sessionKey: string | undefined): SessionKeyParts {
 
 function buildCaptureMetadata(params: {
   sessionKey?: string
-  userMessage: AgentMessage
+  senderUsername?: string
 }): ConversationCaptureMetadata | undefined {
   const session = parseSessionKey(params.sessionKey)
   const metadata: ConversationCaptureMetadata = {
@@ -187,8 +195,7 @@ function buildCaptureMetadata(params: {
     ...(session.surface ? { surface: session.surface } : {}),
     ...(session.channel ? { channel: session.channel } : {}),
   }
-  const senderUsername = messageSenderUsername(params.userMessage)
-  if (senderUsername) metadata.senderUsername = senderUsername
+  if (params.senderUsername) metadata.senderUsername = params.senderUsername
 
   return Object.keys(metadata).length > 0 ? metadata : undefined
 }
@@ -213,16 +220,11 @@ function sessionKeyPassesFilters(
   )
 }
 
-function findCorrespondingUser(messages: AgentMessage[], assistantIndex: number): {
-  message: AgentMessage
-  text: string
-} | undefined {
-  for (let index = assistantIndex - 1; index >= 0; index--) {
-    if (messageRole(messages[index]) !== "user") continue
-    const text = extractMessageText(messages[index])
-    if (text) return { message: messages[index], text }
-  }
-  return undefined
+function isTurnUser(message: unknown): boolean {
+  const record = asRecord(message)
+  return record?.role === "user" &&
+    record.excludeFromContext !== true &&
+    asRecord(record.__openclaw)?.humanAddressed !== true
 }
 
 const CONVERSATION_INFO_HEADER = "Conversation info (untrusted metadata):\n"
@@ -279,13 +281,13 @@ export function stripLeadingUntrustedMetadata(text: string): string {
   return text.slice(afterSender ?? afterConversationInfo)
 }
 
-function selectFinalMessageIndexes(messages: AgentMessage[], start: number): number[] {
+function selectFinalMessageIndex(messages: AgentMessage[], start: number): number {
   // The host commits the inclusive user-to-terminal range, not necessarily an
   // assistant-last range. A confirmed final send is mirrored before its receipt.
   // Match OpenClaw's terminal source-reply marker, not the send's arguments.
   for (let index = messages.length - 1; index >= start; index--) {
     const message = messages[index]
-    if (messageRole(message) === "user") break
+    if (isTurnUser(message)) break
     if (messageRole(message) !== "assistant") continue
     const mirror = asRecord(asRecord(message)?.openclawDeliveryMirror)
     if (
@@ -296,7 +298,7 @@ function selectFinalMessageIndexes(messages: AgentMessage[], start: number): num
     ) {
       // Select before filtering text/NO_REPLY: never fall back to progress or an
       // older answer when the actual final is empty or intentionally omitted.
-      return [index]
+      return index
     }
   }
 
@@ -304,9 +306,9 @@ function selectFinalMessageIndexes(messages: AgentMessage[], start: number): num
   // arbitrary assistant text. A non-terminal source-reply mirror is progress,
   // even if it happens to be the last row.
   const terminalIndex = messages.length - 1
-  if (terminalIndex < start) return []
+  if (terminalIndex < start) return -1
   const mirror = asRecord(asRecord(messages[terminalIndex])?.openclawDeliveryMirror)
-  return mirror?.kind === "message-tool-source-reply" ? [] : [terminalIndex]
+  return mirror?.kind === "message-tool-source-reply" ? -1 : terminalIndex
 }
 
 export function selectCaptureEntries(params: {
@@ -327,23 +329,28 @@ export function selectCaptureEntries(params: {
   if (!sessionKeyPassesFilters(params.sessionKey, params)) return entries
 
   const start = Math.max(0, Math.min(params.prePromptMessageCount, params.messages.length))
-  const messageIndexes = params.commentary
-    ? Array.from(
-        { length: params.messages.length - start },
-        (_, offset) => start + offset,
-      )
-    : selectFinalMessageIndexes(params.messages, start)
-
-  for (const index of messageIndexes) {
+  const end = params.commentary ? params.messages.length - 1 : selectFinalMessageIndex(params.messages, start)
+  const userInputs: CapturedUserInput[] = []
+  for (let index = start; index <= end; index++) {
     const message = params.messages[index]
+    if (isTurnUser(message)) {
+      const raw = extractMessageText(message)
+      const text = params.stripUntrustedMetadata ? stripLeadingUntrustedMetadata(raw) : raw
+      if (text.trim()) {
+        const senderUsername = messageSenderUsername(message)
+        userInputs.push({ text, ...(senderUsername ? { senderUsername } : {}) })
+      }
+      continue
+    }
+    if (!params.commentary && index !== end) continue
     if (messageRole(message) !== "assistant") continue
 
     const assistantText = extractMessageText(message)
     if (!assistantText) continue
     if (params.skipNoReply && assistantText.trim() === "NO_REPLY") continue
 
-    const user = findCorrespondingUser(params.messages, index)
-    if (!user) continue
+    if (!userInputs.length) continue
+    const senderUsername = userInputs.length === 1 ? userInputs[0].senderUsername : undefined
 
     const dateParts = formatInTimezone(
       messageTimestamp(message),
@@ -353,20 +360,17 @@ export function selectCaptureEntries(params: {
     entries.push({
       ...dateParts,
       timestamp: messageTimestampIso(message),
-      ...(messageSenderUsername(user.message)
-        ? { senderUsername: messageSenderUsername(user.message) }
-        : {}),
+      ...(senderUsername ? { senderUsername } : {}),
       ...(params.includeMessageMetadata
         ? {
             metadata: buildCaptureMetadata({
               sessionKey: params.sessionKey,
-              userMessage: user.message,
-            }),
+              senderUsername,
+            }) ?? {},
           }
         : {}),
-      userText: params.stripUntrustedMetadata
-        ? stripLeadingUntrustedMetadata(user.text)
-        : user.text,
+      userText: userInputs.map((input) => input.text).join("\n\n"),
+      ...(userInputs.length > 1 ? { userInputs: userInputs.slice() } : {}),
       assistantText,
     })
   }
@@ -410,13 +414,19 @@ export function renderInitialFile(target: CaptureFileTarget): string {
 
 export function renderCaptureEntry(entry: ConversationCaptureEntry): string {
   const metadataLines = renderMetadataLines(entry.metadata)
+  const userBlocks = entry.userInputs
+    ? entry.userInputs.flatMap((input) => [
+        "**User:**",
+        ...(entry.metadata && input.senderUsername ? [`Sender: ${input.senderUsername}`] : []),
+        input.text.trimEnd(),
+        "",
+      ])
+    : ["**User:**", entry.userText.trimEnd(), ""]
   return [
     `### ${entry.time}`,
     ...metadataLines,
     "",
-    "**User:**",
-    entry.userText.trimEnd(),
-    "",
+    ...userBlocks,
     "**Assistant:**",
     entry.assistantText.trimEnd(),
     "",

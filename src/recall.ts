@@ -5,7 +5,7 @@ import { resolve } from "node:path"
 import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-entry"
 
 import { atomicWriteText, withFileLock } from "./atomic-file.js"
-import type { ConversationCaptureEntry } from "./capture.js"
+import type { CapturedUserInput, ConversationCaptureEntry } from "./capture.js"
 import type { UniversalCaptureConfig } from "./config.js"
 
 export type RecallEntry = {
@@ -15,6 +15,7 @@ export type RecallEntry = {
   sessionKey: string
   senderUsername?: string
   userText: string
+  userInputs?: CapturedUserInput[]
   assistantText: string
 }
 
@@ -72,6 +73,21 @@ function parseRecallEntry(value: unknown): RecallEntry | undefined {
     return undefined
   }
 
+  let userInputs: CapturedUserInput[] | undefined
+  if (value.userInputs !== undefined) {
+    if (!Array.isArray(value.userInputs) || value.userInputs.length === 0) return undefined
+    userInputs = []
+    for (const input of value.userInputs) {
+      if (!isRecord(input) || typeof input.text !== "string") return undefined
+      userInputs.push({
+        text: input.text,
+        ...(asOptionalString(input.senderUsername)
+          ? { senderUsername: asOptionalString(input.senderUsername) }
+          : {}),
+      })
+    }
+  }
+
   return {
     ...(asOptionalString(value.advancementKey)
       ? { advancementKey: asOptionalString(value.advancementKey) }
@@ -83,6 +99,7 @@ function parseRecallEntry(value: unknown): RecallEntry | undefined {
       ? { senderUsername: asOptionalString(value.senderUsername) }
       : {}),
     userText,
+    ...(userInputs ? { userInputs } : {}),
     assistantText,
   }
 }
@@ -180,6 +197,7 @@ export async function writeRecallEntries(params: {
           sessionKey: params.sessionKey,
           ...(entry.senderUsername ? { senderUsername: entry.senderUsername } : {}),
           userText: entry.userText,
+          ...(entry.userInputs ? { userInputs: entry.userInputs } : {}),
           assistantText: entry.assistantText,
         })),
       ],
@@ -205,13 +223,19 @@ function truncateUtf8(text: string, maxBytes: number): string {
 }
 
 function renderRecallEntry(entry: RecallEntry): string {
+  const userBlocks = entry.userInputs
+    ? entry.userInputs.flatMap((input) => [
+        "User:",
+        ...(input.senderUsername ? [`Sender: ${input.senderUsername}`] : []),
+        input.text,
+        "",
+      ])
+    : ["User:", entry.userText, ""]
   return [
     `Timestamp: ${entry.timestamp}`,
     ...(entry.senderUsername ? [`Sender: ${entry.senderUsername}`] : []),
     "",
-    "User:",
-    entry.userText,
-    "",
+    ...userBlocks,
     "Assistant:",
     entry.assistantText,
   ].join("\n")
