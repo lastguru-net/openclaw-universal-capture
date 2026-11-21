@@ -374,7 +374,7 @@ test("context engine declares the OpenClaw turn contract", async () => {
       currentTurnFence: "before-current-turn-entry-v1",
       turnAdvancementIdempotency: "atomic-idempotent-v1",
     })
-    assert.equal(contextEngine.info.version, "0.8.0")
+    assert.equal(contextEngine.info.version, "0.9.0")
     assert.equal(typeof contextEngine.commitTurn, "function")
     assert.equal("afterTurn" in contextEngine, false)
     assert.deepEqual(await contextEngine.bootstrap(), { bootstrapped: true })
