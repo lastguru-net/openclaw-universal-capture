@@ -52,6 +52,8 @@ test("bounded inputs preserve order and duplicates without old or future users",
 })
 
 test("commentary entries include only inputs already present at that point", () => {
+  const snapshots = select([...messages, user("third"), assistant("Updated answer")], { commentary: true })
+  assert.deepEqual(snapshots.map((entry) => entry.userInputs?.length), [undefined, 2, 3])
   assert.deepEqual(select(messages, { commentary: true }).map((entry) => [entry.userText, entry.assistantText]), [
     ["Original request", "Working"],
     ["Original request\n\nAdditional request", "Combined answer"],
@@ -66,6 +68,33 @@ test("multi-input delivery mirrors still win over receipts and silent completion
   assert.equal(entry.assistantText, "Delivered answer")
   assert.equal(entry.userInputs?.length, 2)
   assert.equal(select([...messages.slice(0, -1), assistant("NO_REPLY")], { skipNoReply: true }).length, 0)
+})
+
+test("non-input rows after final delivery do not hide the delivered answer", () => {
+  const mirror = { ...assistant("Delivered"), openclawDeliveryMirror: {
+    kind: "message-tool-source-reply", final: true, sourceTurnId: "turn-1",
+  } }
+  const prefix = [user("original"), user("steer"), mirror]
+  for (const row of [
+    { ...user("excluded"), excludeFromContext: true },
+    { ...user("for a person"), __openclaw: { humanAddressed: true } },
+  ]) {
+    assert.equal(select([...prefix, row, tool, assistant("NO_REPLY")],
+      { skipNoReply: true })[0]?.assistantText, "Delivered")
+  }
+  // An actual later user, even without text, is still a delivery boundary.
+  assert.deepEqual(select([...prefix, user(""), tool]), [])
+})
+
+test("metadata-only rows do not create empty user blocks or misattribute senders", () => {
+  const envelope = "Conversation info (untrusted metadata):\n```json\n{}\n```"
+  const row = user(envelope, "alice")
+  const entry = select([row, user("question", "bob"), assistant("answer")])[0]!
+  assert.equal(entry.userInputs, undefined)
+  assert.equal(entry.senderUsername, "bob")
+  assert.equal(entry.userText, "question")
+  assert.deepEqual(select([row, assistant("answer")]), [])
+  assert.equal(select([row, assistant("answer")], { stripUntrustedMetadata: false })[0]?.userText, envelope)
 })
 
 test("each user is normalized separately and optional sender display is respected", () => {
